@@ -33,9 +33,14 @@ const state = {
   lanUrls: [],
   wifiName: "",
   tunnelError: "",
+  pdfImport: false,
   view: "list",
   practice: null,
   previewAsStudent: false,
+  settingsStudentId: null,
+  pendingDeleteRow: null,
+  localTeacher: false,
+  pendingNewStudent: false,
 };
 
 const els = {
@@ -50,18 +55,26 @@ const els = {
   previewBtn: document.getElementById("preview-btn"),
   exitPreviewBtn: document.getElementById("exit-preview-btn"),
   previewBanner: document.getElementById("preview-banner"),
+  rowConfirm: document.getElementById("row-confirm"),
+  rowConfirmYes: document.getElementById("row-confirm-yes"),
+  rowConfirmNo: document.getElementById("row-confirm-no"),
   tableActions: document.getElementById("table-actions"),
   templateWrap: document.getElementById("template-wrap"),
   templateSelect: document.getElementById("template-select"),
   addRowBtn: document.getElementById("add-row-btn"),
+  settingsBtn: document.getElementById("settings-btn"),
+  modalTitle: document.getElementById("modal-title"),
   saveStatus: document.getElementById("save-status"),
   shareBar: document.getElementById("share-bar"),
   shareUrl: document.getElementById("share-url"),
-  shareLan: document.getElementById("share-lan"),
-  shareLanTitle: document.getElementById("share-lan-title"),
   shareHint: document.getElementById("share-hint"),
   copyLinkBtn: document.getElementById("copy-link-btn"),
-  copyLanBtn: document.getElementById("copy-lan-btn"),
+  logoutBtn: document.getElementById("logout-btn"),
+  loginScreen: document.getElementById("login-screen"),
+  loginForm: document.getElementById("login-form"),
+  loginName: document.getElementById("login-name"),
+  loginPassword: document.getElementById("login-password"),
+  loginError: document.getElementById("login-error"),
   modal: document.getElementById("modal"),
   studentForm: document.getElementById("student-form"),
   studentName: document.getElementById("student-name"),
@@ -74,12 +87,19 @@ const els = {
   cancelModal: document.getElementById("cancel-modal"),
   createFields: document.getElementById("create-fields"),
   createdBox: document.getElementById("created-box"),
+  createdLead: document.getElementById("created-lead"),
+  createdCreds: document.getElementById("created-creds"),
+  copyCredsBtn: document.getElementById("copy-creds-btn"),
+  accessFields: document.getElementById("access-fields"),
+  settingsLogin: document.getElementById("settings-login"),
+  resetPasswordBtn: document.getElementById("reset-password-btn"),
   createSubmit: document.getElementById("create-submit"),
   modalError: document.getElementById("modal-error"),
 };
 
 let saveTimer = null;
 let pollTimer = null;
+let saveChain = Promise.resolve();
 
 function emptyRow() {
   return {
@@ -91,6 +111,13 @@ function emptyRow() {
     homework: "",
     comment: "",
     bankId: "",
+    theoryFileId: "",
+    theoryFileName: "",
+    homeworkFileId: "",
+    homeworkFileName: "",
+    practiceFileId: "",
+    practiceFileName: "",
+    importedSource: "",
   };
 }
 
@@ -106,8 +133,60 @@ function isTeacherUi() {
   return isTeacherAccount() && !state.previewAsStudent;
 }
 
+function hideRowConfirm() {
+  state.pendingDeleteRow = null;
+  if (els.rowConfirm) els.rowConfirm.classList.add("hidden");
+}
+
+function showRowConfirm(rowIndex) {
+  if (!els.rowConfirm) return;
+  state.pendingDeleteRow = rowIndex;
+  els.rowConfirm.classList.remove("hidden");
+  if (els.rowConfirmNo) els.rowConfirmNo.focus();
+}
+
+function insertLessonAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  hideRowConfirm();
+  const at = Math.max(0, Math.min(Number(index) || 0, student.rows.length));
+  student.rows.splice(at, 0, emptyRow());
+  scheduleSave();
+  renderTable();
+  const dateArea = els.tableView.querySelector(`textarea[data-row='${at}'][data-key='date']`);
+  if (dateArea) dateArea.focus();
+}
+
+async function deleteLessonAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  const row = student.rows[index];
+  if (!row) return;
+  hideRowConfirm();
+  for (const field of ["theory", "homework", "practice"]) {
+    if (!row[`${field}FileId`]) continue;
+    try {
+      const data = await api("/api/file/delete", {
+        method: "POST",
+        body: JSON.stringify({ studentId: student.id, row: index, field }),
+      });
+      replaceStudent(data.student);
+    } catch (_error) {
+      /* строку всё равно убираем */
+    }
+  }
+  const fresh = currentStudent();
+  if (!fresh) return;
+  fresh.rows.splice(index, 1);
+  if (!fresh.rows.length) fresh.rows.push(emptyRow());
+  setSaveStatus("Строка удалена");
+  await persistCurrent();
+  renderTable();
+}
+
 function enterStudentPreview(studentId) {
   if (!isTeacherAccount() || !studentId) return;
+  hideRowConfirm();
   state.previewAsStudent = true;
   state.currentId = studentId;
   renderTable();
@@ -154,15 +233,20 @@ function weekdaySelect(id, selected) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    cache: "no-store",
-    credentials: "same-origin",
-    ...options,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      cache: "no-store",
+      credentials: "same-origin",
+      ...options,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    throw friendlyNetworkError(error);
+  }
   let data = {};
   try {
     data = await response.json();
@@ -175,14 +259,26 @@ async function api(path, options = {}) {
   return data;
 }
 
+function friendlyNetworkError(error) {
+  const message = String((error && error.message) || error || "");
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
+    return new Error(
+      "Журнал не отвечает. Закройте все чёрные окна запуска, откройте «запустить.bat» и обновите страницу."
+    );
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
 async function loadSession() {
   const data = await api("/api/session");
   state.me = data.user;
+  state.localTeacher = Boolean(data.localTeacher);
   state.publicUrl = data.publicUrl || "";
   state.lanUrl = data.lanUrl || "";
   state.lanUrls = Array.isArray(data.lanUrls) && data.lanUrls.length ? data.lanUrls : data.lanUrl ? [data.lanUrl] : [];
   state.wifiName = data.wifiName || "";
   state.tunnelError = data.tunnelError || "";
+  state.pdfImport = Boolean(data.pdfImport);
   updateShareBar();
   return data;
 }
@@ -203,33 +299,54 @@ function updateShareBar() {
     return;
   }
   els.shareBar.classList.remove("hidden");
-  const wifi = state.wifiName ? ` «${state.wifiName}»` : "";
-  if (els.shareLanTitle) {
-    els.shareLanTitle.textContent = `Запасной адрес в Wi‑Fi${wifi}`;
-  }
-  if (els.shareLan) {
-    els.shareLan.textContent = (state.lanUrls && state.lanUrls.length ? state.lanUrls : [state.lanUrl]).filter(Boolean).join("\n");
-  }
   if (state.publicUrl) {
     els.shareUrl.textContent = state.publicUrl;
-    els.shareHint.textContent =
-      "Верхнюю ссылку можно открыть даже с мобильного интернета. Нижнюю — только если телефон в той же Wi‑Fi, что компьютер, и в адресе http://, не https://.";
+    els.shareHint.textContent = "Эту ссылку можно открыть с телефона из любой сети. Вводите http://, не https://.";
   } else if (state.tunnelError) {
     els.shareUrl.textContent = state.tunnelError;
-    els.shareHint.textContent =
-      `Телефон в Wi‑Fi${wifi || " компьютера"}, адрес с http:// не https://. Если Safari ставит замочек — откройте Chrome. Один раз запустите «разрешить-телефон.bat» и нажмите Да. Если снова не открывается, на компьютере включите Мобильный хот-спот и подключите телефон к нему.`;
+    els.shareHint.textContent = "Интернет-ссылка пока не готова. Не закрывайте окно запуска и обновите страницу через минуту.";
   } else {
     els.shareUrl.textContent = "Готовится… подождите 10–20 секунд, окно запуска не закрывайте";
-    els.shareHint.textContent =
-      "Сначала появится интернет-ссылка. Если нужна только Wi‑Fi — копируйте нижний адрес, обязательно http://, не https://.";
+    els.shareHint.textContent = "Сначала появится интернет-ссылка. Вводите http://, не https://.";
   }
 }
 
 function showApp() {
+  if (els.loginScreen) els.loginScreen.classList.add("hidden");
   els.app.classList.remove("hidden");
   els.addStudentBtn.classList.toggle("hidden", !isTeacherUi());
+  if (els.logoutBtn) els.logoutBtn.classList.toggle("hidden", state.localTeacher);
   updateModeChrome();
   updateShareBar();
+}
+
+function showLoginScreen() {
+  if (els.app) els.app.classList.add("hidden");
+  if (els.loginScreen) els.loginScreen.classList.remove("hidden");
+  if (els.loginError) els.loginError.textContent = "";
+  if (els.loginPassword) els.loginPassword.value = "";
+  if (els.loginName) els.loginName.focus();
+}
+
+function accessMessage(name, login, password) {
+  const lines = [`Журнал русского языка — кабинет ученика${name ? ` (${name})` : ""}`];
+  if (state.publicUrl) {
+    lines.push(`Ссылка: ${state.publicUrl}`);
+  }
+  lines.push(`Логин: ${login}`, `Пароль: ${password}`, "");
+  lines.push(
+    state.publicUrl
+      ? "Откройте ссылку, введите логин и пароль — откроется только ваша таблица."
+      : "Введите логин и пароль на странице входа — откроется только ваша таблица."
+  );
+  return lines.join("\n");
+}
+
+function showCreatedAccess(name, login, password, lead) {
+  const text = accessMessage(name, login, password);
+  if (els.createdLead) els.createdLead.textContent = lead;
+  if (els.createdCreds) els.createdCreds.textContent = text;
+  els.createdBox.classList.remove("hidden");
 }
 
 function collectCreateSlots() {
@@ -244,36 +361,34 @@ function collectCreateSlots() {
 }
 
 async function persistCurrent() {
-  const student = currentStudent();
-  if (!student) return;
-  setSaveStatus("Сохранение…");
-  const data = await api("/api/table", {
-    method: "POST",
-    body: JSON.stringify({
-      id: student.id,
-      rows: student.rows,
-      template: student.template,
-    }),
-  });
-  if (data.student) {
-    const index = state.students.findIndex((item) => item.id === student.id);
-    if (index >= 0) state.students[index] = data.student;
-  }
-  setSaveStatus("Сохранено");
+  const run = async () => {
+    const student = currentStudent();
+    if (!student || !isTeacherUi()) return;
+    setSaveStatus("Сохранение…");
+    await api("/api/table", {
+      method: "POST",
+      body: JSON.stringify({
+        id: student.id,
+        rows: student.rows,
+        template: student.template,
+      }),
+    });
+    setSaveStatus("Сохранено");
+  };
+  saveChain = saveChain.then(run, run);
+  return saveChain;
 }
 
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    persistCurrent().catch((error) => setSaveStatus(error.message));
-  }, 250);
-}
-
-function fitTableAreas() {
-  els.tableView.querySelectorAll("textarea").forEach((area) => {
-    area.style.height = "auto";
-    area.style.height = `${Math.max(88, area.scrollHeight)}px`;
-  });
+    persistCurrent()
+      .then(() => importHomeworkPdfs(currentStudent()))
+      .then((changed) => {
+        if (changed && state.view === "table") renderTable();
+      })
+      .catch((error) => setSaveStatus(friendlyNetworkError(error).message));
+  }, 1200);
 }
 
 function toggleSecondSlot() {
@@ -281,29 +396,72 @@ function toggleSecondSlot() {
   els.secondSlot.classList.toggle("hidden", !twice);
 }
 
+function fillStudentForm(student) {
+  const schedule = (student && student.schedule) || {};
+  const slots = Array.isArray(schedule.slots) ? schedule.slots : [];
+  els.studentName.value = student ? student.name : "";
+  els.studentForm.template.value = student && student.template === "twice" ? "twice" : "once";
+  els.startDate.value = schedule.startDate || "2026-09-03";
+  els.weekday0.value = String(slots[0] ? slots[0].weekday : 3);
+  els.time0.value = (slots[0] && slots[0].time) || "16:00";
+  els.weekday1.value = String(slots[1] ? slots[1].weekday : 1);
+  els.time1.value = (slots[1] && slots[1].time) || "16:00";
+  toggleSecondSlot();
+}
+
 function openModal() {
+  state.settingsStudentId = null;
+  state.pendingNewStudent = false;
+  if (els.modalTitle) els.modalTitle.textContent = "Новый ученик";
   els.modal.classList.remove("hidden");
   els.createFields.classList.remove("hidden");
+  if (els.accessFields) els.accessFields.classList.add("hidden");
   els.createdBox.classList.add("hidden");
   els.createSubmit.classList.remove("hidden");
   els.createSubmit.textContent = "Создать таблицу";
+  els.cancelModal.textContent = "Отмена";
   els.modalError.textContent = "";
   els.studentForm.reset();
-  els.studentForm.template.value = "once";
-  els.startDate.value = "2026-09-03";
-  els.weekday0.value = "3";
-  els.time0.value = "16:00";
-  els.weekday1.value = "1";
-  els.time1.value = "16:00";
-  toggleSecondSlot();
+  fillStudentForm(null);
   els.studentName.focus();
 }
 
-function closeModal() {
+function openSettings(studentId) {
+  const student = state.students.find((item) => item.id === studentId) || currentStudent();
+  if (!student || !isTeacherUi()) return;
+  state.settingsStudentId = student.id;
+  state.pendingNewStudent = false;
+  if (els.modalTitle) els.modalTitle.textContent = "Настройки ученика";
+  els.modal.classList.remove("hidden");
+  els.createFields.classList.remove("hidden");
+  if (els.accessFields) els.accessFields.classList.remove("hidden");
+  if (els.settingsLogin) els.settingsLogin.textContent = student.login || "ещё не задан";
+  els.createdBox.classList.add("hidden");
+  els.createSubmit.classList.remove("hidden");
+  els.createSubmit.textContent = "Сохранить";
+  els.cancelModal.textContent = "Отмена";
+  els.modalError.textContent = "";
+  fillStudentForm(student);
+  els.studentName.focus();
+}
+
+function closeModal(goToTable) {
+  const pending = state.pendingNewStudent;
+  const id = state.currentId;
   els.modal.classList.add("hidden");
+  state.settingsStudentId = null;
+  state.pendingNewStudent = false;
+  els.cancelModal.textContent = "Отмена";
+  if (!pending || !id) return;
+  if (goToTable) {
+    renderTable();
+    return;
+  }
+  renderList();
 }
 
 function renderList() {
+  hideRowConfirm();
   state.view = "list";
   state.currentId = null;
   state.previewAsStudent = false;
@@ -312,9 +470,10 @@ function renderList() {
   els.practiceView.classList.add("hidden");
   els.backBtn.classList.add("hidden");
   els.tableActions.classList.add("hidden");
+  if (els.settingsBtn) els.settingsBtn.classList.add("hidden");
   if (isTeacherUi()) els.addStudentBtn.classList.remove("hidden");
   els.pageTitle.textContent = "Журнал занятий";
-  els.pageSubtitle.textContent = "Выберите ученика или создайте таблицу с расписанием";
+  els.pageSubtitle.textContent = "Русский язык · 10–11 классы · Подготовка к экзаменам и уроки";
   updateModeChrome();
   updateShareBar();
 
@@ -328,38 +487,75 @@ function renderList() {
     return;
   }
 
-  els.listView.innerHTML = `<div class="cards">${state.students
-    .map(
-      (student) => `
+  els.listView.innerHTML = `
+    <div class="cards">${state.students
+      .map(
+        (student) => `
         <article class="card" data-id="${student.id}">
           <div class="card-top">
             <div class="avatar">${escapeHtml(initial(student.name))}</div>
             <div>
               <h2>${escapeHtml(student.name)}</h2>
               <span class="badge">${TEMPLATE_LABELS[student.template] || TEMPLATE_LABELS.once}</span>
+              ${student.login ? `<p class="card-login">логин: ${escapeHtml(student.login)}</p>` : ""}
             </div>
           </div>
           <div class="card-actions">
             <button class="primary-btn open-table" type="button">Открыть таблицу</button>
             <button class="secondary-btn preview-student" type="button">Как видит ученик</button>
+            <button class="secondary-btn open-settings" type="button">Настройки</button>
             <button class="danger-btn delete-student" type="button">Удалить</button>
           </div>
         </article>
       `
-    )
-    .join("")}</div>`;
+      )
+      .join("")}</div>`;
 }
 
 function bankOptions(selected) {
-  const items = state.banks.length ? state.banks : [{ id: "ege-10", title: "Задание 10 ЕГЭ" }];
+  const items = state.banks.length ? state.banks.slice() : [{ id: "ege-10", title: "Задание 10 ЕГЭ" }];
+  if (selected && !items.some((bank) => bank.id === selected)) {
+    const student = currentStudent();
+    const row = student && (student.rows || []).find((item) => item.bankId === selected);
+    items.push({ id: selected, title: (row && row.bankTitle) || "Задания из PDF" });
+  }
   return `<option value="">— нет —</option>${items
-    .map(
-      (bank) =>
-        `<option value="${escapeHtml(bank.id)}" ${bank.id === selected ? "selected" : ""}>${escapeHtml(
-          bank.title
-        )}</option>`
-    )
+    .map((bank) => {
+      const extra = bank.total ? ` · ${bank.total}` : "";
+      const label = bank.id === "ege-10" ? bank.title : `${bank.title}${extra}`;
+      return `<option value="${escapeHtml(bank.id)}" ${bank.id === selected ? "selected" : ""}>${escapeHtml(
+        label
+      )}</option>`;
+    })
     .join("")}`;
+}
+
+function rowHasLessonContent(row) {
+  if (!row || typeof row !== "object") return false;
+  if (["topic", "theory", "homework", "comment"].some((key) => String(row[key] || "").trim())) {
+    return true;
+  }
+  if (String(row.bankId || "").trim()) return true;
+  if (String(row.theoryFileId || "").trim()) return true;
+  if (String(row.homeworkFileId || "").trim()) return true;
+  return false;
+}
+
+function visibleRowIndexes(student) {
+  const rows = Array.isArray(student.rows) ? student.rows : [];
+  if (!isStudentView()) {
+    return rows.map((_, index) => index);
+  }
+  const filled = [];
+  rows.forEach((row, index) => {
+    if (rowHasLessonContent(row)) filled.push(index);
+  });
+  if (!filled.length) return [];
+  const next = filled[filled.length - 1] + 1;
+  if (next < rows.length && !filled.includes(next)) {
+    filled.push(next);
+  }
+  return filled;
 }
 
 function renderTable() {
@@ -368,9 +564,13 @@ function renderTable() {
     if (isTeacherAccount()) renderList();
     return;
   }
+  if (!isTeacherUi()) hideRowConfirm();
 
-  if (!Array.isArray(student.rows) || student.rows.length === 0) {
-    student.rows = [emptyRow(), emptyRow(), emptyRow(), emptyRow(), emptyRow()];
+  if (!Array.isArray(student.rows)) {
+    student.rows = [];
+  }
+  if (student.rows.length === 0 && isTeacherUi()) {
+    student.rows = [emptyRow()];
   }
 
   state.view = "table";
@@ -381,84 +581,99 @@ function renderTable() {
   els.backBtn.textContent = "← К списку";
   els.tableActions.classList.toggle("hidden", isStudentView());
   els.addStudentBtn.classList.add("hidden");
-  els.templateWrap.classList.toggle("hidden", !isTeacherUi());
+  els.templateWrap.classList.add("hidden");
   els.addRowBtn.classList.toggle("hidden", !isTeacherUi());
+  if (els.settingsBtn) {
+    els.settingsBtn.classList.toggle("hidden", !isTeacherUi());
+  }
   els.pageTitle.textContent = student.name;
   els.pageSubtitle.textContent = isStudentView()
-    ? "Нажмите на задания, чтобы вписать ответы. Тему, теорию и домашнее задание заполняет педагог."
-    : "Одно занятие можно перенести, исправив дату в его строке. Остальные уроки не изменятся.";
-  els.templateSelect.value = student.template === "twice" ? "twice" : "once";
+    ? "Заполненные уроки и дата следующего занятия."
+    : "Между уроками нажмите «+». Крестик удаляет строку. В конец таблицы — отдельная кнопка.";
   updateModeChrome();
   updateShareBar();
 
-  const schedule = student.schedule || {};
-  const slots = Array.isArray(schedule.slots) ? schedule.slots : [];
-  const start = schedule.startDate || "2026-09-03";
-  const twice = student.template === "twice";
-  const scheduleHtml = isTeacherUi()
-    ? `<div class="schedule-bar">
-        <div class="schedule-head">
-          <strong>Расписание</strong>
-          <span class="hint">Чтобы перенести одно занятие, исправьте дату прямо в строке урока. Остальные даты не изменятся.</span>
-        </div>
-        <label>День ${weekdaySelect("table-weekday-0", slots[0] ? slots[0].weekday : 3)}</label>
-        <label>Время <input id="table-time-0" type="time" value="${escapeHtml(
-          (slots[0] && slots[0].time) || "16:00"
-        )}" /></label>
-        <span id="table-second-slot" class="${twice ? "" : "hidden"}">
-          <label>Ещё день ${weekdaySelect("table-weekday-1", slots[1] ? slots[1].weekday : 1)}</label>
-          <label>Время <input id="table-time-1" type="time" value="${escapeHtml(
-            (slots[1] && slots[1].time) || "16:00"
-          )}" /></label>
-        </span>
-        <input id="table-start" type="hidden" value="${escapeHtml(start)}" />
-        <button id="save-schedule-btn" class="secondary-btn" type="button">Сохранить день и время</button>
-      </div>`
-    : "";
+  const rowIndexes = visibleRowIndexes(student);
+  if (isStudentView() && rowIndexes.length === 0) {
+    els.tableView.innerHTML = `
+      <div class="empty-state">
+        <p>Педагог ещё не заполнил занятия.</p>
+        <p>Когда появятся тема, материалы или домашнее задание, урок откроется здесь. Следом будет видна дата следующего занятия.</p>
+      </div>
+    `;
+    return;
+  }
 
-  const head = COLUMNS.map((column) => `<th class="${column.className}">${column.label}</th>`).join("");
-  const body = student.rows
-    .map((row, rowIndex) => {
+  const toolsHead = isTeacherUi() ? `<th class="col-row-tools"></th>` : "";
+  const colCount = COLUMNS.length + (isTeacherUi() ? 1 : 0);
+  const insertGap = (index) =>
+    isTeacherUi()
+      ? `<tr class="insert-gap"><td colspan="${colCount}">
+          <button class="insert-lesson" type="button" data-insert="${index}" title="Вставить урок между этими строками">+</button>
+        </td></tr>`
+      : "";
+  const head = `${toolsHead}${COLUMNS.map((column) => `<th class="${column.className}">${column.label}</th>`).join("")}`;
+  const renderLessonRow = (rowIndex) => {
+      const row = student.rows[rowIndex];
+      const upcoming = isStudentView() && !rowHasLessonContent(row);
       const cells = COLUMNS.map((column) => {
         if (column.key === "practice") {
           const fraction = row.bankId ? row.practice || "0/0" : "—";
           const teacherSelect = isTeacherUi()
             ? `<select data-row="${rowIndex}" data-role="bank">${bankOptions(row.bankId || "")}</select>`
             : "";
+          const attach = isTeacherUi()
+            ? `<label class="file-corner" title="Загрузить PDF с заданиями">
+                <span class="file-corner-mark" aria-hidden="true">+</span>
+                <input type="file" class="visually-hidden" accept="application/pdf,.pdf" data-row="${rowIndex}" data-field="practice" />
+              </label>`
+            : "";
           const openBtn = row.bankId
             ? `<button class="practice-link" type="button" data-row="${rowIndex}" data-bank="${escapeHtml(
                 row.bankId
               )}">${escapeHtml(fraction)}</button>`
-            : `<span class="hint">выберите задания</span>`;
-          return `<td class="col-practice practice-cell"><div class="practice-box">${teacherSelect}${
+            : `<span class="hint">${isTeacherUi() ? "PDF или набор" : "пока нет заданий"}</span>`;
+          return `<td class="col-practice practice-cell" data-label="${escapeHtml(column.label)}"><div class="practice-box">${attach}${teacherSelect}${
             isTeacherUi() || row.bankId ? openBtn : "—"
           }</div></td>`;
         }
         if (column.key === "progress") {
           if (!row.bankId) {
-            return `<td class="col-progress progress-cell"></td>`;
+            return `<td class="col-progress progress-cell" data-label="${escapeHtml(column.label)}"></td>`;
           }
           const color = row.progressColor || "red";
-          return `<td class="col-progress progress-cell"><div class="progress-swatch progress-${color}">${escapeHtml(
+          return `<td class="col-progress progress-cell" data-label="${escapeHtml(column.label)}"><div class="progress-swatch progress-${color}">${escapeHtml(
             row.progress || "0%"
           )}</div></td>`;
+        }
+        if (column.key === "theory" || column.key === "homework") {
+          return renderMaterialCell(row, rowIndex, column);
         }
         const value = row[column.key] ?? "";
         const locked = isStudentView();
         const readonly = locked ? "readonly" : "";
         const placeholder = column.key === "date" ? 'placeholder="например 10.09.2026, 17:00"' : "";
-        return `<td class="${column.className}">
-          <textarea data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false" ${placeholder} ${readonly}>${escapeHtml(
+        return `<td class="${column.className}" data-label="${escapeHtml(column.label)}">
+          <textarea class="cell-fill" data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false" ${placeholder} ${readonly}>${escapeHtml(
             String(value)
           )}</textarea>
         </td>`;
       }).join("");
-      return `<tr>${cells}</tr>`;
-    })
-    .join("");
+      const tools = isTeacherUi()
+        ? `<td class="col-row-tools" data-label="Урок">
+            <button class="row-delete" type="button" data-row="${rowIndex}" title="Удалить этот урок">×</button>
+          </td>`
+        : "";
+      const rowClass = upcoming ? ' class="lesson-upcoming"' : "";
+      return `${tools ? `<tr${rowClass}>${tools}${cells}</tr>` : `<tr${rowClass}>${cells}</tr>`}${
+        isTeacherUi() ? insertGap(rowIndex + 1) : ""
+      }`;
+  };
+  const body = isTeacherUi()
+    ? insertGap(0) + rowIndexes.map(renderLessonRow).join("")
+    : rowIndexes.map(renderLessonRow).join("");
 
   els.tableView.innerHTML = `
-    ${scheduleHtml}
     <div class="table-wrap">
       <table>
         <thead><tr>${head}</tr></thead>
@@ -466,12 +681,12 @@ function renderTable() {
       </table>
     </div>
   `;
-  fitTableAreas();
 }
 
 async function openPractice(bankId) {
   const student = currentStudent();
   if (!student || !bankId) return;
+  hideRowConfirm();
   const asStudent = isStudentView() ? "&asStudent=1" : "";
   const data = await api(
     `/api/practice?studentId=${encodeURIComponent(student.id)}&bankId=${encodeURIComponent(bankId)}${asStudent}`
@@ -482,6 +697,7 @@ async function openPractice(bankId) {
   els.tableView.classList.add("hidden");
   els.practiceView.classList.remove("hidden");
   els.tableActions.classList.add("hidden");
+  if (els.settingsBtn) els.settingsBtn.classList.add("hidden");
   els.addStudentBtn.classList.add("hidden");
   els.backBtn.classList.remove("hidden");
   els.backBtn.textContent = "← К таблице";
@@ -501,21 +717,25 @@ function renderPractice() {
   const color = data.statsColor || "red";
   const tasks = (data.tasks || [])
     .map((task) => {
-      const options = (task.options || [])
-        .map((option, index) => `<li>${escapeHtml(option)}</li>`)
-        .join("");
+      const optionItems = (task.options || []).filter(Boolean);
+      const options = optionItems.length
+        ? `<ol class="task-options">${optionItems.map((option) => `<li>${escapeHtml(option)}</li>`).join("")}</ol>`
+        : "";
       const keyField = isTeacherUi()
-        ? `<label>Ключ <input class="key-input" data-n="${task.n}" data-role="key" value="${escapeHtml(
+        ? `<label class="task-field-label">Ключ <input class="key-input" data-n="${task.n}" data-role="key" value="${escapeHtml(
             task.answer || ""
           )}" placeholder="например 245" /></label>`
         : "";
       return `
         <article class="task-card ${task.status || ""}" data-n="${task.n}">
-          <h2>№ ${task.n}</h2>
-          <p>${escapeHtml(task.prompt || data.instruction || "")}</p>
-          <ol>${options}</ol>
+          <div class="task-card-top">
+            <span class="task-badge">№ ${task.n}</span>
+            <span class="task-tag">Задание ЕГЭ</span>
+          </div>
+          <p class="task-prompt">${escapeHtml(task.prompt || data.instruction || "")}</p>
+          ${options}
           <div class="task-actions">
-            <label>Ответ ученика
+            <label class="task-field-label">Ответ ученика
               <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="245 или 2, 4, 5" />
             </label>
             <button class="primary-btn save-answer" type="button" data-n="${task.n}">Сохранить</button>
@@ -529,9 +749,11 @@ function renderPractice() {
 
   els.practiceView.innerHTML = `
     <div class="practice-stats progress-${color}">
-      Выполнено ${stats.done} / ${stats.total} (${stats.percent}%).
-      ${stats.correct ? `Верно: ${stats.correct}.` : ""}
-      Запишите номера рядов без пробелов, как в ЕГЭ: например 245.
+      <div class="stats-text">
+        <strong>Выполнено:</strong> ${stats.done} из ${stats.total} (${stats.percent}%).
+        ${stats.correct ? ` · <strong>Верно:</strong> ${stats.correct}.` : ""}
+      </div>
+      <div class="stats-hint">Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.</div>
     </div>
     <div class="task-list">${tasks}</div>
   `;
@@ -550,6 +772,115 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function linkifyText(text) {
+  const raw = String(text || "");
+  if (!raw.trim()) {
+    return "";
+  }
+  return raw.split(/(https?:\/\/[^\s]+)/g).map((part, index) => {
+    if (index % 2 === 1) {
+      const href = part.replaceAll('"', "%22");
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(part)}</a>`;
+    }
+    return escapeHtml(part).replaceAll("\n", "<br>");
+  }).join("");
+}
+
+function fileUrl(id, name) {
+  return `/api/file?id=${encodeURIComponent(id)}&name=${encodeURIComponent(name || id)}`;
+}
+
+function firstPdfUrl(text) {
+  const matches = String(text || "").match(/https?:\/\/[^\s<>"]+/gi) || [];
+  return matches.map((item) => item.replace(/[),.;]+$/g, "")).find((item) => isPdfUrl(item)) || "";
+}
+
+function isPdfUrl(url) {
+  const raw = String(url || "").trim();
+  const lowered = raw.toLowerCase();
+  if (lowered.endsWith(".pdf")) return true;
+  if (/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]{20,}/i.test(raw)) return true;
+  if (lowered.includes("drive.google.com") && lowered.includes("id=")) return true;
+  if (lowered.includes("dropbox.com") && (lowered.endsWith(".pdf") || lowered.includes("dl="))) return true;
+  return false;
+}
+
+const importFailed = new Set();
+let importInFlight = false;
+
+async function importHomeworkPdfs(student) {
+  if (!student || !isTeacherUi() || !state.pdfImport || importInFlight) return false;
+  let changed = false;
+  for (let index = 0; index < (student.rows || []).length; index += 1) {
+    const row = student.rows[index];
+    const url = firstPdfUrl(row.homework);
+    if (!url || url === row.importedSource) continue;
+    if (String(row.importedSource || "").startsWith("manual:")) continue;
+    const key = `${student.id}:${index}:${url}`;
+    if (importFailed.has(key)) continue;
+    importInFlight = true;
+    setSaveStatus("Разбираю PDF…");
+    try {
+      const data = await api("/api/import-pdf", {
+        method: "POST",
+        body: JSON.stringify({ studentId: student.id, row: index, url }),
+      });
+      replaceStudent(data.student);
+      await loadBanks();
+      changed = true;
+      setSaveStatus(data.total ? `Готово: ${data.total} заданий из PDF` : "Задания из PDF готовы");
+    } catch (error) {
+      importFailed.add(key);
+      setSaveStatus(error.message);
+    } finally {
+      importInFlight = false;
+    }
+  }
+  return changed;
+}
+
+function renderMaterialCell(row, rowIndex, column) {
+  const field = column.key;
+  const value = String(row[field] ?? "");
+  const fileId = row[`${field}FileId`] || "";
+  const fileName = row[`${field}FileName`] || "";
+  const fileLink = fileId
+    ? `<a class="file-open" href="${escapeHtml(fileUrl(fileId, fileName || fileId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+        fileName || "открыть"
+      )}</a>`
+    : "";
+  if (isStudentView()) {
+    const text = linkifyText(value);
+    const body = text || fileLink ? `${text ? `<div class="material-text">${text}</div>` : ""}${fileLink}` : "—";
+    return `<td class="${column.className}" data-label="${escapeHtml(column.label)}"><div class="material-cell student-material">${body}</div></td>`;
+  }
+  const placeholder =
+    field === "theory"
+      ? 'placeholder="заметка или ссылка на документ"'
+      : 'placeholder="домашнее задание, ссылка на PDF или файл"';
+  const attach = `<label class="file-corner" title="Прикрепить документ">
+      <span class="file-corner-mark" aria-hidden="true">+</span>
+      <input type="file" class="visually-hidden" data-row="${rowIndex}" data-field="${field}" />
+    </label>`;
+  const remove = fileId
+    ? `<button class="file-remove" type="button" data-row="${rowIndex}" data-field="${field}">Убрать</button>`
+    : "";
+  const tools = fileId ? `<div class="material-tools">${fileLink}${remove}</div>` : "";
+  return `<td class="${column.className}" data-label="${escapeHtml(column.label)}">
+    <div class="material-cell">
+      <textarea class="cell-fill" data-row="${rowIndex}" data-key="${field}" rows="1" spellcheck="false" ${placeholder}>${escapeHtml(value)}</textarea>
+      ${attach}
+      ${tools}
+    </div>
+  </td>`;
+}
+
+function replaceStudent(student) {
+  if (!student || !student.id) return;
+  const index = state.students.findIndex((item) => item.id === student.id);
+  if (index >= 0) state.students[index] = student;
+}
+
 function afterLogin() {
   showApp();
   startPolling();
@@ -562,6 +893,11 @@ function afterLogin() {
 }
 
 els.addStudentBtn.addEventListener("click", openModal);
+if (els.settingsBtn) {
+  els.settingsBtn.addEventListener("click", () => {
+    if (state.currentId) openSettings(state.currentId);
+  });
+}
 if (els.previewBtn) {
   els.previewBtn.addEventListener("click", () => {
     if (state.currentId) enterStudentPreview(state.currentId);
@@ -602,30 +938,82 @@ els.templateSelect.addEventListener("change", () => {
 els.addRowBtn.addEventListener("click", () => {
   const student = currentStudent();
   if (!student || !isTeacherUi()) return;
+  hideRowConfirm();
   student.rows.push(emptyRow());
   scheduleSave();
   renderTable();
 });
+if (els.rowConfirmYes) {
+  els.rowConfirmYes.addEventListener("click", () => {
+    const index = state.pendingDeleteRow;
+    if (index == null) {
+      hideRowConfirm();
+      return;
+    }
+    deleteLessonAt(index).catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+  });
+}
+if (els.rowConfirmNo) {
+  els.rowConfirmNo.addEventListener("click", hideRowConfirm);
+}
+if (els.rowConfirm) {
+  els.rowConfirm.addEventListener("click", (event) => {
+    if (event.target === els.rowConfirm) hideRowConfirm();
+  });
+}
 
 els.studentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!els.createdBox.classList.contains("hidden")) {
-    closeModal();
+  if (!els.createdBox.classList.contains("hidden") && state.pendingNewStudent) {
+    closeModal(true);
     return;
   }
   els.modalError.textContent = "";
   const name = els.studentName.value.trim();
+  if (!name) {
+    els.modalError.textContent = "Нужно имя ученика";
+    return;
+  }
   const { template, slots, startDate } = collectCreateSlots();
   try {
+    if (state.settingsStudentId) {
+      const data = await api("/api/schedule", {
+        method: "POST",
+        body: JSON.stringify({
+          id: state.settingsStudentId,
+          name,
+          template,
+          startDate,
+          slots,
+          regenerate: true,
+        }),
+      });
+      replaceStudent(data.student);
+      state.currentId = data.student.id;
+      closeModal();
+      setSaveStatus("Настройки сохранены");
+      renderTable();
+      return;
+    }
     const data = await api("/api/students", {
       method: "POST",
       body: JSON.stringify({ name, template, startDate, slots }),
     });
     state.students.push(data.student);
+    state.currentId = data.student.id;
+    state.pendingNewStudent = true;
     els.createFields.classList.add("hidden");
-    els.createdBox.classList.remove("hidden");
-    els.createSubmit.textContent = "Закрыть";
-    renderList();
+    els.createSubmit.textContent = "Открыть таблицу";
+    els.cancelModal.textContent = "К списку";
+    showCreatedAccess(
+      data.student.name,
+      data.login || data.student.login,
+      data.password,
+      "Сохраните эти данные и отправьте ученику. Пароль больше не покажется."
+    );
   } catch (error) {
     els.modalError.textContent = error.message;
   }
@@ -652,6 +1040,10 @@ els.listView.addEventListener("click", async (event) => {
     enterStudentPreview(id);
     return;
   }
+  if (event.target.closest(".open-settings")) {
+    openSettings(id);
+    return;
+  }
   if (event.target.closest(".open-table")) {
     state.previewAsStudent = false;
     state.currentId = id;
@@ -662,8 +1054,6 @@ els.listView.addEventListener("click", async (event) => {
 els.tableView.addEventListener("input", (event) => {
   const area = event.target.closest("textarea");
   if (!area || area.readOnly) return;
-  area.style.height = "auto";
-  area.style.height = `${Math.max(88, area.scrollHeight)}px`;
   const student = currentStudent();
   if (!student) return;
   const row = student.rows[Number(area.dataset.row)];
@@ -673,6 +1063,45 @@ els.tableView.addEventListener("input", (event) => {
 });
 
 els.tableView.addEventListener("change", (event) => {
+  const fileInput = event.target.closest("input[type='file'][data-field]");
+  if (fileInput) {
+    const file = fileInput.files && fileInput.files[0];
+    fileInput.value = "";
+    if (!file || !isTeacherUi()) return;
+    const student = currentStudent();
+    if (!student) return;
+    const body = new FormData();
+    body.append("studentId", student.id);
+    body.append("row", fileInput.dataset.row);
+    body.append("field", fileInput.dataset.field);
+    body.append("file", file);
+    setSaveStatus("Загружаю файл…");
+    persistCurrent()
+      .then(() =>
+        fetch("/api/upload", { method: "POST", body, credentials: "same-origin", cache: "no-store" })
+      )
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Не удалось загрузить файл");
+        replaceStudent(data.student);
+        await loadBanks();
+        renderTable();
+        if (data.importError) {
+          setSaveStatus(data.importError);
+          alert(data.importError);
+        } else if (data.total) {
+          setSaveStatus(`Готово: ${data.total} заданий из PDF`);
+        } else {
+          setSaveStatus("Файл прикреплён");
+        }
+      })
+      .catch((error) => {
+        const friendly = friendlyNetworkError(error);
+        setSaveStatus(friendly.message);
+        alert(friendly.message);
+      });
+    return;
+  }
   const select = event.target.closest("select[data-role='bank']");
   if (!select || !isTeacherUi()) return;
   const student = currentStudent();
@@ -680,12 +1109,23 @@ els.tableView.addEventListener("change", (event) => {
   const row = student.rows[Number(select.dataset.row)];
   if (!row) return;
   row.bankId = select.value;
+  row.importedSource = select.value ? `manual:${select.value}` : "";
   persistCurrent()
     .then(() => renderTable())
     .catch((error) => setSaveStatus(error.message));
 });
 
 els.tableView.addEventListener("click", async (event) => {
+  const insertBtn = event.target.closest(".insert-lesson");
+  if (insertBtn) {
+    insertLessonAt(Number(insertBtn.dataset.insert));
+    return;
+  }
+  const deleteBtn = event.target.closest(".row-delete");
+  if (deleteBtn) {
+    showRowConfirm(Number(deleteBtn.dataset.row));
+    return;
+  }
   if (!event.target.closest("textarea, input, select, button, a, label")) {
     const cell = event.target.closest("td");
     const area = cell && cell.querySelector("textarea:not([readonly])");
@@ -694,42 +1134,27 @@ els.tableView.addEventListener("click", async (event) => {
       return;
     }
   }
-  if (event.target.id === "save-schedule-btn") {
+  const remove = event.target.closest(".file-remove");
+  if (remove) {
     const student = currentStudent();
-    if (!student) return;
-    const template = els.templateSelect.value === "twice" ? "twice" : "once";
-    const slots = [
-      {
-        weekday: Number(document.getElementById("table-weekday-0").value),
-        time: document.getElementById("table-time-0").value || "16:00",
-      },
-    ];
-    if (template === "twice") {
-      slots.push({
-        weekday: Number(document.getElementById("table-weekday-1").value),
-        time: document.getElementById("table-time-1").value || "16:00",
+    if (!student || !isTeacherUi()) return;
+    api("/api/file/delete", {
+      method: "POST",
+      body: JSON.stringify({
+        studentId: student.id,
+        row: Number(remove.dataset.row),
+        field: remove.dataset.field,
+      }),
+    })
+      .then((data) => {
+        replaceStudent(data.student);
+        renderTable();
+        setSaveStatus("Файл убран");
+      })
+      .catch((error) => {
+        setSaveStatus(error.message);
+        alert(error.message);
       });
-    }
-    try {
-      setSaveStatus("Сохраняю расписание…");
-      const data = await api("/api/schedule", {
-        method: "POST",
-        body: JSON.stringify({
-          id: student.id,
-          template,
-          startDate: document.getElementById("table-start").value,
-          slots,
-          regenerate: false,
-        }),
-      });
-      const index = state.students.findIndex((item) => item.id === student.id);
-      if (index >= 0) state.students[index] = data.student;
-      setSaveStatus("День и время сохранены");
-      renderTable();
-    } catch (error) {
-      setSaveStatus(error.message);
-      alert(error.message);
-    }
     return;
   }
   const link = event.target.closest(".practice-link");
@@ -796,41 +1221,113 @@ els.copyLinkBtn.addEventListener("click", async () => {
   }
 });
 
-if (els.copyLanBtn) {
-  els.copyLanBtn.addEventListener("click", async () => {
-    const text = (state.lanUrls && state.lanUrls[0]) || state.lanUrl;
+if (els.copyCredsBtn) {
+  els.copyCredsBtn.addEventListener("click", async () => {
+    const text = els.createdCreds ? els.createdCreds.textContent : "";
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      els.copyLanBtn.textContent = "Скопировано";
+      els.copyCredsBtn.textContent = "Скопировано";
       setTimeout(() => {
-        els.copyLanBtn.textContent = "Копировать ссылку для телефона (Wi‑Fi)";
+        els.copyCredsBtn.textContent = "Скопировать для отправки";
       }, 1500);
     } catch (_error) {
-      prompt("Скопируйте ссылку. Должно быть http, не https:", text);
+      prompt("Скопируйте сообщение ученику:", text);
     }
+  });
+}
+
+if (els.resetPasswordBtn) {
+  els.resetPasswordBtn.addEventListener("click", async () => {
+    const studentId = state.settingsStudentId;
+    if (!studentId) return;
+    els.modalError.textContent = "";
+    try {
+      const data = await api("/api/students/password", {
+        method: "POST",
+        body: JSON.stringify({ id: studentId, reset: true }),
+      });
+      const student = state.students.find((item) => item.id === studentId);
+      showCreatedAccess(
+        student ? student.name : "",
+        data.login,
+        data.password,
+        "Новый пароль. Старый больше не работает. Отправьте ученику это сообщение."
+      );
+    } catch (error) {
+      els.modalError.textContent = error.message;
+    }
+  });
+}
+
+if (els.loginForm) {
+  els.loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (els.loginError) els.loginError.textContent = "";
+    try {
+      const data = await api("/api/login", {
+        method: "POST",
+        body: JSON.stringify({
+          login: els.loginName.value.trim(),
+          password: els.loginPassword.value,
+        }),
+      });
+      state.me = data.user;
+      state.localTeacher = Boolean(data.localTeacher);
+      state.publicUrl = data.publicUrl || state.publicUrl;
+      await enterApp();
+    } catch (error) {
+      if (els.loginError) els.loginError.textContent = error.message;
+    }
+  });
+}
+
+if (els.logoutBtn) {
+  els.logoutBtn.addEventListener("click", async () => {
+    try {
+      await api("/api/logout", { method: "POST", body: "{}" });
+    } catch (_error) {
+      /* всё равно выходим на экран входа */
+    }
+    state.me = null;
+    state.students = [];
+    state.currentId = null;
+    state.localTeacher = false;
+    showLoginScreen();
   });
 }
 
 function startPolling() {
   clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
+    if (state.publicUrl) {
+      clearInterval(pollTimer);
+      return;
+    }
     try {
       await loadSession();
     } catch (_error) {
       /* окно запуска могли закрыть */
     }
-  }, 3000);
+  }, 8000);
+}
+
+async function enterApp() {
+  await loadStudents();
+  await loadBanks();
+  afterLogin();
 }
 
 async function start() {
   try {
     const session = await loadSession();
-    state.me = session.user || { role: "teacher", name: "Учитель" };
-    await loadStudents();
-    await loadBanks();
-    afterLogin();
+    if (!session.user) {
+      showLoginScreen();
+      return;
+    }
+    await enterApp();
   } catch (error) {
+    if (els.app) els.app.classList.remove("hidden");
     els.listView.innerHTML = `
       <div class="empty-state">
         <p>Не получилось открыть журнал.</p>

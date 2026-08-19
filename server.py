@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import mimetypes
 import os
 import re
 import secrets
@@ -22,9 +23,10 @@ import webbrowser
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import journal
+import pdf_import
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
@@ -32,6 +34,7 @@ DATA_DIR = ROOT / "data"
 TOOLS_DIR = ROOT / "tools"
 DATA_FILE = DATA_DIR / "students.json"
 AUTH_FILE = DATA_DIR / "auth.json"
+UPLOADS_DIR = DATA_DIR / "uploads"
 CLOUDFLARED = TOOLS_DIR / "cloudflared.exe"
 HOST = "0.0.0.0"
 START_PORT = 8765
@@ -48,6 +51,9 @@ PUBLIC_URL = ""
 TUNNEL_ERROR = ""
 TUNNEL_PROC: subprocess.Popen | None = None
 WIFI_NAME_CACHE = ""
+LAN_IP_CACHE = ""
+LAN_IPS_CACHE: list[str] = []
+LAN_INFO_AT = 0.0
 LOGIN_HITS: dict[str, list[float]] = {}
 
 RU_TO_LAT = {
@@ -87,6 +93,9 @@ RU_TO_LAT = {
 }
 
 
+PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"
+
+
 def slug_login(name: str) -> str:
     raw = []
     for char in (name or "").strip().lower():
@@ -96,6 +105,20 @@ def slug_login(name: str) -> str:
             raw.append(char)
     login = "".join(raw) or "uchenik"
     return login[:40]
+
+
+def generate_password() -> str:
+    chars = [secrets.choice(PASSWORD_ALPHABET) for _ in range(8)]
+    return "".join(chars[:4]) + "-" + "".join(chars[4:])
+
+
+def is_loopback(host: str) -> bool:
+    value = (host or "").strip().lower().strip("[]")
+    if value in ("127.0.0.1", "::1", "localhost"):
+        return True
+    if value.startswith("::ffff:") and value.rsplit(":", 1)[-1] == "127.0.0.1":
+        return True
+    return value.startswith("127.")
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -240,6 +263,85 @@ def login_taken(login: str, skip_id: str | None = None) -> bool:
     return False
 
 
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+UPLOAD_EXTENSIONS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".ppt",
+    ".pptx",
+    ".odt",
+    ".txt",
+    ".rtf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+}
+
+
+def safe_upload_id(raw: str) -> str:
+    name = Path(str(raw or "")).name
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{1,80}", name):
+        return ""
+    suffix = Path(name).suffix.lower()
+    if suffix not in UPLOAD_EXTENSIONS:
+        return ""
+    return name
+
+
+def parse_multipart(headers, body: bytes) -> dict:
+    content_type = headers.get("Content-Type", "")
+    match = re.search(r"boundary=([^;]+)", content_type, re.I)
+    if not match:
+        return {"fields": {}, "file": None}
+    boundary = match.group(1).strip().strip('"').encode("utf-8")
+    fields: dict[str, str] = {}
+    uploaded = None
+    for raw_part in body.split(b"--" + boundary):
+        part = raw_part.strip(b"\r\n")
+        if not part or part == b"--" or part.startswith(b"--"):
+            continue
+        header_blob, sep, data = part.partition(b"\r\n\r\n")
+        if not sep:
+            continue
+        header_text = header_blob.decode("utf-8", "replace")
+        name_match = re.search(r'name="([^"]+)"', header_text)
+        if not name_match:
+            continue
+        name = name_match.group(1)
+        filename_match = re.search(r'filename="([^"]*)"', header_text)
+        if filename_match is not None:
+            uploaded = {
+                "filename": unquote(filename_match.group(1)),
+                "data": data.rstrip(b"\r\n"),
+            }
+        else:
+            fields[name] = data.rstrip(b"\r\n").decode("utf-8", "replace")
+    return {"fields": fields, "file": uploaded}
+
+
+def attach_pdf_bank(
+    data: dict,
+    student: dict,
+    row_index: int,
+    pdf_bytes: bytes,
+    source_name: str,
+    source_key: str,
+    parsed: dict | None = None,
+) -> dict:
+    rows = student.get("rows") if isinstance(student.get("rows"), list) else []
+    if row_index < 0 or row_index >= len(rows) or not isinstance(rows[row_index], dict):
+        raise ValueError("Строка не найдена")
+    bank = parsed or pdf_import.import_pdf_bytes(pdf_bytes, source_name, journal.pdf_bank_id(pdf_bytes))
+    journal.save_bank(bank)
+    row = rows[row_index]
+    row["bankId"] = bank["id"]
+    row["importedSource"] = source_key
+    return bank
+
+
 def too_many_logins(ip: str) -> bool:
     now = time.time()
     with SESSION_LOCK:
@@ -275,31 +377,43 @@ def drop_session(token: str | None) -> None:
 
 
 def lan_ip() -> str:
+    refresh_network_info()
+    return LAN_IP_CACHE or "127.0.0.1"
+
+
+def lan_ips() -> list[str]:
+    refresh_network_info()
+    return LAN_IPS_CACHE or ["127.0.0.1"]
+
+
+def refresh_network_info() -> None:
+    global LAN_IP_CACHE, LAN_IPS_CACHE, LAN_INFO_AT
+    now = time.time()
+    if LAN_IPS_CACHE and now - LAN_INFO_AT < 60:
+        return
+    ip = "127.0.0.1"
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.connect(("8.8.8.8", 80))
         ip = sock.getsockname()[0]
         sock.close()
-        return ip
-    except OSError:
-        return "127.0.0.1"
-
-
-def lan_ips() -> list[str]:
-    found: list[str] = []
-    primary = lan_ip()
-    if primary and not primary.startswith("127."):
-        found.append(primary)
-    try:
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            ip = info[4][0]
-            if ip.startswith("127.") or ip.startswith("169.254."):
-                continue
-            if ip not in found:
-                found.append(ip)
     except OSError:
         pass
-    return found or ["127.0.0.1"]
+    found = []
+    if ip and not ip.startswith("127."):
+        found.append(ip)
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            item = info[4][0]
+            if item.startswith("127.") or item.startswith("169.254."):
+                continue
+            if item not in found:
+                found.append(item)
+    except OSError:
+        pass
+    LAN_IP_CACHE = ip
+    LAN_IPS_CACHE = found or [ip]
+    LAN_INFO_AT = now
 
 
 def wifi_name() -> str:
@@ -581,6 +695,11 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(STATIC), **kwargs)
 
     def log_message(self, format: str, *args) -> None:
+        path = ""
+        if args:
+            path = str(args[0])
+        if "/api/session" in path or "/api/table" in path:
+            return
         sys.stderr.write("%s - %s\n" % (self.address_string(), format % args))
 
     def guess_type(self, path):
@@ -595,6 +714,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
         if cookie:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
@@ -615,13 +735,19 @@ class Handler(SimpleHTTPRequestHandler):
         morsel = cookie.get(COOKIE_NAME)
         return morsel.value if morsel else None
 
-    def _user(self) -> dict:
-        return get_session(self._token()) or {
-            "role": "teacher",
-            "login": "учитель",
-            "name": "Учитель",
-            "student_id": None,
-        }
+    def _user(self) -> dict | None:
+        session = get_session(self._token())
+        if session:
+            return session
+        if is_loopback(self.client_address[0]):
+            return {
+                "role": "teacher",
+                "login": "учитель",
+                "name": "Учитель",
+                "student_id": None,
+                "local": True,
+            }
+        return None
 
     def _read_json(self) -> dict | None:
         length = int(self.headers.get("Content-Length", "0") or "0")
@@ -649,12 +775,14 @@ class Handler(SimpleHTTPRequestHandler):
                 "name": user["name"],
                 "studentId": user.get("student_id"),
             },
+            "localTeacher": bool(user and user.get("local")),
             "publicUrl": PUBLIC_URL,
             "localUrl": f"http://127.0.0.1:{port}/",
             "lanUrl": f"http://{lan_ip()}:{port}/",
             "lanUrls": [f"http://{ip}:{port}/" for ip in lan_ips()],
             "wifiName": wifi_name(),
             "tunnelError": TUNNEL_ERROR,
+            "pdfImport": True,
         }
 
     def do_GET(self) -> None:
@@ -688,6 +816,9 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "Нужно войти"}, 401)
                 return
             self._practice(user)
+            return
+        if path == "/api/file":
+            self._serve_upload()
             return
         if path == "/favicon.ico":
             self.send_response(204)
@@ -732,7 +863,29 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/bank-key":
             self._save_bank_key(user)
             return
+        if path == "/api/upload":
+            self._upload_material(user)
+            return
+        if path == "/api/import-pdf":
+            self._import_pdf(user)
+            return
+        if path == "/api/file/delete":
+            self._delete_material(user)
+            return
+        self._drain_body()
         self.send_error(404)
+
+    def _drain_body(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            return
+        leftover = min(max(length, 0), MAX_UPLOAD_BYTES + 1)
+        while leftover > 0:
+            chunk = self.rfile.read(min(65536, leftover))
+            if not chunk:
+                break
+            leftover -= len(chunk)
 
     def _login(self) -> None:
         payload = self._read_json()
@@ -752,6 +905,10 @@ class Handler(SimpleHTTPRequestHandler):
         if login.casefold() == auth["teacher_login"].casefold() and check_password(
             password, auth["teacher_salt"], auth["teacher_password_hash"]
         ):
+            if not is_loopback(ip) and auth.get("teacher_password_is_initial"):
+                mark_login_fail(ip)
+                self._send_json({"ok": False, "error": "Неверный логин или пароль"}, 401)
+                return
             token = new_session(
                 {
                     "role": "teacher",
@@ -802,7 +959,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         name = str(payload.get("name") or "").strip()
         login = str(payload.get("login") or "").strip() or slug_login(name)
-        password = str(payload.get("password") or "").strip() or secrets.token_hex(8)
+        password = str(payload.get("password") or "").strip() or generate_password()
         template = "twice" if payload.get("template") == "twice" else "once"
         if not name:
             self._send_json({"ok": False, "error": "Нужно имя ученика"}, 400)
@@ -833,7 +990,14 @@ class Handler(SimpleHTTPRequestHandler):
             data = load_data()
             data["students"].append(student)
             save_data(data)
-        self._send_json({"ok": True, "student": public_student(student)})
+        self._send_json(
+            {
+                "ok": True,
+                "student": public_student(student),
+                "login": login,
+                "password": password,
+            }
+        )
 
     def _delete_student(self, user: dict) -> None:
         if user["role"] != "teacher":
@@ -858,9 +1022,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         student_id = str(payload.get("id") or "")
         password = str(payload.get("password") or "").strip()
-        if not password:
-            self._send_json({"ok": False, "error": "Введите новый пароль"}, 400)
-            return
+        if payload.get("reset") or not password:
+            password = generate_password()
         with DATA_LOCK:
             data = load_data()
             student = find_student(data, student_id)
@@ -872,7 +1035,8 @@ class Handler(SimpleHTTPRequestHandler):
             student["password_hash"] = digest
             student["password_is_initial"] = False
             save_data(data)
-        self._send_json({"ok": True})
+            login = str(student.get("login") or "")
+        self._send_json({"ok": True, "login": login, "password": password})
 
     def _set_teacher_password(self, user: dict) -> None:
         if user["role"] != "teacher":
@@ -950,6 +1114,9 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
                 return
             student["template"] = template
+            name = str(payload.get("name") or "").strip()
+            if name:
+                student["name"] = name
             student["schedule"] = {
                 "startDate": start.isoformat(),
                 "slots": slots,
@@ -1024,6 +1191,259 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self._send_json({"ok": True})
 
+    def _serve_upload(self) -> None:
+        query = {key: values[0] for key, values in parse_qs(urlparse(self.path).query).items()}
+        file_id = safe_upload_id(query.get("id") or "")
+        if not file_id:
+            self._send_json({"ok": False, "error": "Файл не найден"}, 404)
+            return
+        path = UPLOADS_DIR / file_id
+        if not path.is_file():
+            self._send_json({"ok": False, "error": "Файл не найден"}, 404)
+            return
+        download_name = Path(unquote(query.get("name") or file_id)).name or file_id
+        download_name = re.sub(r'[\r\n"]+', "", download_name)[:180] or file_id
+        data = path.read_bytes()
+        ctype = mimetypes.guess_type(file_id)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header(
+            "Content-Disposition",
+            f"inline; filename*=UTF-8''{quote(download_name)}",
+        )
+        self.send_header("Cache-Control", "private, max-age=120")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _import_pdf(self, user: dict) -> None:
+        if user["role"] != "teacher":
+            self._send_json({"ok": False, "error": "PDF разбирает учитель"}, 403)
+            return
+        content_type = self.headers.get("Content-Type") or ""
+        pdf_bytes = b""
+        source_name = "zadaniya.pdf"
+        source_key = ""
+        student_id = ""
+        row_index = -1
+        if "multipart/form-data" in content_type:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            if length <= 0 or length > MAX_UPLOAD_BYTES:
+                self._send_json({"ok": False, "error": "Файл слишком большой (до 20 МБ)"}, 400)
+                return
+            parsed = parse_multipart(self.headers, self.rfile.read(length))
+            fields = parsed.get("fields") or {}
+            uploaded = parsed.get("file")
+            student_id = str(fields.get("studentId") or "")
+            try:
+                row_index = int(fields.get("row"))
+            except (TypeError, ValueError):
+                self._send_json({"ok": False, "error": "Некорректная строка"}, 400)
+                return
+            if not uploaded or not uploaded.get("data"):
+                self._send_json({"ok": False, "error": "Выберите PDF"}, 400)
+                return
+            pdf_bytes = uploaded["data"]
+            source_name = Path(uploaded.get("filename") or "zadaniya.pdf").name
+            source_key = f"upload:{source_name}"
+        else:
+            payload = self._read_json()
+            if payload is None:
+                return
+            student_id = str(payload.get("studentId") or "")
+            try:
+                row_index = int(payload.get("row"))
+            except (TypeError, ValueError):
+                self._send_json({"ok": False, "error": "Некорректная строка"}, 400)
+                return
+            url = str(payload.get("url") or "").strip()
+            from_field = str(payload.get("fromField") or "")
+            if url:
+                try:
+                    pdf_bytes, source_name = pdf_import.download_pdf(url)
+                except ValueError as exc:
+                    self._send_json({"ok": False, "error": str(exc)}, 400)
+                    return
+                source_key = pdf_import.canonical_source_url(url)
+            elif from_field in ("homework", "practice"):
+                with DATA_LOCK:
+                    data = load_data()
+                    student = find_student(data, student_id)
+                    if not student:
+                        self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
+                        return
+                    rows = student.get("rows") if isinstance(student.get("rows"), list) else []
+                    if row_index < 0 or row_index >= len(rows) or not isinstance(rows[row_index], dict):
+                        self._send_json({"ok": False, "error": "Строка не найдена"}, 400)
+                        return
+                    file_id = safe_upload_id(str(rows[row_index].get(f"{from_field}FileId") or ""))
+                    file_name = str(rows[row_index].get(f"{from_field}FileName") or file_id)
+                if not file_id or Path(file_id).suffix.lower() != ".pdf":
+                    self._send_json({"ok": False, "error": "В этой строке нет PDF"}, 400)
+                    return
+                path = UPLOADS_DIR / file_id
+                if not path.is_file():
+                    self._send_json({"ok": False, "error": "Файл не найден"}, 404)
+                    return
+                pdf_bytes = path.read_bytes()
+                source_name = file_name or file_id
+                source_key = f"file:{file_id}"
+            else:
+                self._send_json({"ok": False, "error": "Нужен PDF или ссылка на него"}, 400)
+                return
+        try:
+            parsed_bank = pdf_import.import_pdf_bytes(
+                pdf_bytes, source_name, journal.pdf_bank_id(pdf_bytes)
+            )
+        except ValueError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, 400)
+            return
+        except Exception:
+            self._send_json({"ok": False, "error": "Не получилось разобрать PDF."}, 400)
+            return
+        with DATA_LOCK:
+            data = load_data()
+            student = find_student(data, student_id)
+            if not student:
+                self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
+                return
+            try:
+                bank = attach_pdf_bank(
+                    data, student, row_index, b"", source_name, source_key, parsed=parsed_bank
+                )
+                save_data(data)
+                saved = public_student(student)
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            except Exception:
+                self._send_json({"ok": False, "error": "Не получилось сохранить задания из PDF."}, 400)
+                return
+        self._send_json(
+            {
+                "ok": True,
+                "student": saved,
+                "bankId": bank["id"],
+                "total": len(bank.get("tasks") or []),
+            }
+        )
+
+    def _upload_material(self, user: dict) -> None:
+        if user["role"] != "teacher":
+            self._send_json({"ok": False, "error": "Материал прикрепляет учитель"}, 403)
+            return
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0 or length > MAX_UPLOAD_BYTES:
+            self._send_json({"ok": False, "error": "Файл слишком большой (до 20 МБ)"}, 400)
+            return
+        parsed = parse_multipart(self.headers, self.rfile.read(length))
+        fields = parsed.get("fields") or {}
+        uploaded = parsed.get("file")
+        if not uploaded or not uploaded.get("data"):
+            self._send_json({"ok": False, "error": "Выберите файл"}, 400)
+            return
+        field = str(fields.get("field") or "theory")
+        if field not in ("theory", "homework", "practice"):
+            self._send_json({"ok": False, "error": "Некорректное поле"}, 400)
+            return
+        student_id = str(fields.get("studentId") or "")
+        try:
+            row_index = int(fields.get("row"))
+        except (TypeError, ValueError):
+            self._send_json({"ok": False, "error": "Некорректная строка"}, 400)
+            return
+        original = Path(uploaded["filename"] or "material").name
+        suffix = Path(original).suffix.lower()
+        if suffix not in UPLOAD_EXTENSIONS:
+            self._send_json({"ok": False, "error": "Можно прикрепить PDF, Word, презентацию или картинку"}, 400)
+            return
+        if field == "practice" and suffix != ".pdf":
+            self._send_json({"ok": False, "error": "В практику загрузите PDF с заданиями"}, 400)
+            return
+        stored = f"{uuid.uuid4().hex}{suffix}"
+        UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        dest = UPLOADS_DIR / stored
+        dest.write_bytes(uploaded["data"])
+        parsed_bank = None
+        import_error = ""
+        imported_total = 0
+        if field in ("homework", "practice") and suffix == ".pdf":
+            try:
+                parsed_bank = pdf_import.import_pdf_bytes(
+                    uploaded["data"], original, journal.pdf_bank_id(uploaded["data"])
+                )
+            except Exception as exc:
+                import_error = str(exc) or "Не получилось разобрать PDF."
+        with DATA_LOCK:
+            data = load_data()
+            student = find_student(data, student_id)
+            if not student:
+                dest.unlink(missing_ok=True)
+                self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
+                return
+            rows = student.get("rows") if isinstance(student.get("rows"), list) else []
+            if row_index < 0 or row_index >= len(rows) or not isinstance(rows[row_index], dict):
+                dest.unlink(missing_ok=True)
+                self._send_json({"ok": False, "error": "Строка не найдена"}, 400)
+                return
+            old_id = safe_upload_id(str(rows[row_index].get(f"{field}FileId") or ""))
+            if old_id:
+                (UPLOADS_DIR / old_id).unlink(missing_ok=True)
+            rows[row_index][f"{field}FileId"] = stored
+            rows[row_index][f"{field}FileName"] = original
+            if parsed_bank:
+                try:
+                    journal.save_bank(parsed_bank)
+                    rows[row_index]["bankId"] = parsed_bank["id"]
+                    rows[row_index]["importedSource"] = f"file:{stored}"
+                    imported_total = len(parsed_bank.get("tasks") or [])
+                except Exception:
+                    import_error = import_error or "Не получилось сохранить задания из PDF."
+            save_data(data)
+            saved = public_student(student)
+        payload = {"ok": True, "student": saved}
+        if import_error:
+            payload["importError"] = import_error
+        if imported_total:
+            payload["total"] = imported_total
+        self._send_json(payload)
+
+    def _delete_material(self, user: dict) -> None:
+        if user["role"] != "teacher":
+            self._send_json({"ok": False, "error": "Файл удаляет учитель"}, 403)
+            return
+        payload = self._read_json()
+        if payload is None:
+            return
+        field = str(payload.get("field") or "")
+        if field not in ("theory", "homework", "practice"):
+            self._send_json({"ok": False, "error": "Некорректное поле"}, 400)
+            return
+        student_id = str(payload.get("studentId") or "")
+        try:
+            row_index = int(payload.get("row"))
+        except (TypeError, ValueError):
+            self._send_json({"ok": False, "error": "Некорректная строка"}, 400)
+            return
+        with DATA_LOCK:
+            data = load_data()
+            student = find_student(data, student_id)
+            if not student:
+                self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
+                return
+            rows = student.get("rows") if isinstance(student.get("rows"), list) else []
+            if row_index < 0 or row_index >= len(rows) or not isinstance(rows[row_index], dict):
+                self._send_json({"ok": False, "error": "Строка не найдена"}, 400)
+                return
+            old_id = safe_upload_id(str(rows[row_index].get(f"{field}FileId") or ""))
+            if old_id:
+                (UPLOADS_DIR / old_id).unlink(missing_ok=True)
+            rows[row_index][f"{field}FileId"] = ""
+            rows[row_index][f"{field}FileName"] = ""
+            save_data(data)
+            saved = public_student(student)
+        self._send_json({"ok": True, "student": saved})
+
 
 def ensure_lan_firewall(port: int) -> None:
     if os.name != "nt":
@@ -1084,13 +1504,19 @@ def ensure_lan_firewall(port: int) -> None:
 def find_port(start: int = START_PORT, attempts: int = 12) -> int:
     for port in range(start, start + attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if os.name == "nt":
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
             try:
                 sock.bind((HOST, port))
             except OSError:
                 continue
             return port
     raise RuntimeError("Не удалось найти свободный порт")
+
+
+class JournalServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+    daemon_threads = True
 
 
 def main() -> None:
@@ -1108,7 +1534,7 @@ def main() -> None:
 
     port = find_port()
     ensure_lan_firewall(port)
-    httpd = ThreadingHTTPServer((HOST, port), Handler)
+    httpd = JournalServer((HOST, port), Handler)
     local_url = f"http://127.0.0.1:{port}/"
     print("Журнал занятий открывается в браузере.", flush=True)
     print(local_url, flush=True)

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import date, datetime, timedelta
@@ -12,6 +13,14 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 BANKS_DIR = DATA_DIR / "banks"
 ROW_KEYS = ("date", "topic", "theory", "practice", "progress", "homework", "comment")
+FILE_KEYS = (
+    "theoryFileId",
+    "theoryFileName",
+    "homeworkFileId",
+    "homeworkFileName",
+    "practiceFileId",
+    "practiceFileName",
+)
 WEEKDAY_NAMES = (
     "понедельник",
     "вторник",
@@ -27,6 +36,9 @@ def empty_row(date_str: str = "") -> dict:
     row = {key: "" for key in ROW_KEYS}
     row["date"] = date_str
     row["bankId"] = ""
+    row["importedSource"] = ""
+    for key in FILE_KEYS:
+        row[key] = ""
     return row
 
 
@@ -114,7 +126,7 @@ def apply_schedule(student: dict, start: date, slots: list[dict], template: str)
         key = date_str.split(",")[0].strip()
         prev = old_by_date.get(key, {})
         row = empty_row(date_str)
-        for field in ("topic", "theory", "homework", "comment", "bankId"):
+        for field in ("topic", "theory", "homework", "comment", "bankId", "importedSource", *FILE_KEYS):
             row[field] = str(prev.get(field) or "")
         new_rows.append(row)
     student["rows"] = new_rows
@@ -137,9 +149,18 @@ def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bo
         item = empty_row()
         for key in ROW_KEYS:
             item[key] = str(row.get(key, "") or "")
-        item["bankId"] = str(row.get("bankId") or prev.get("bankId") or "")
+        if "bankId" in row:
+            item["bankId"] = str(row.get("bankId") or "")
+        else:
+            item["bankId"] = str(prev.get("bankId") or "")
+        if "importedSource" in row:
+            item["importedSource"] = str(row.get("importedSource") or "")
+        else:
+            item["importedSource"] = str(prev.get("importedSource") or "")
+        for key in FILE_KEYS:
+            item[key] = str(row.get(key) or prev.get(key) or "")
         if student_locked:
-            for key in ("topic", "theory", "homework", "comment", "bankId"):
+            for key in ("topic", "theory", "homework", "comment", "bankId", "importedSource", *FILE_KEYS):
                 item[key] = str(prev.get(key, "") or "")
         if item["bankId"]:
             item["practice"] = ""
@@ -185,7 +206,33 @@ def list_banks() -> list[dict]:
                 "total": len(bank.get("tasks") or []),
             }
         )
+    result.sort(key=lambda item: (0 if item["id"] == "ege-10" else 1, item["title"].casefold(), item["id"]))
     return result
+
+
+def pdf_bank_id(pdf_bytes: bytes) -> str:
+    return "pdf-" + hashlib.sha256(pdf_bytes).hexdigest()[:12]
+
+
+def delete_bank(bank_id: str) -> None:
+    safe = re.sub(r"[^a-z0-9\-]", "", str(bank_id or "").lower())
+    if not safe.startswith("pdf-"):
+        return
+    path = BANKS_DIR / f"{safe}.json"
+    path.unlink(missing_ok=True)
+
+
+def bank_used(data: dict, bank_id: str) -> bool:
+    wanted = str(bank_id or "")
+    if not wanted:
+        return False
+    for student in data.get("students") or []:
+        if not isinstance(student, dict):
+            continue
+        for row in student.get("rows") or []:
+            if isinstance(row, dict) and str(row.get("bankId") or "") == wanted:
+                return True
+    return False
 
 
 def normalize_answer(raw: str) -> str:
@@ -226,12 +273,20 @@ def public_student(student: dict | None) -> dict | None:
     if not student:
         return None
     rows = []
+    bank_cache: dict[str, dict | None] = {}
     for row in student.get("rows") or []:
         if not isinstance(row, dict):
             continue
         item = {key: str(row.get(key, "") or "") for key in ROW_KEYS}
         item["bankId"] = str(row.get("bankId") or "")
+        item["importedSource"] = str(row.get("importedSource") or "")
+        for key in FILE_KEYS:
+            item[key] = str(row.get(key) or "")
         if item["bankId"]:
+            if item["bankId"] not in bank_cache:
+                bank_cache[item["bankId"]] = load_bank(item["bankId"])
+            bank = bank_cache[item["bankId"]]
+            item["bankTitle"] = (bank.get("title") if bank else "") or item["bankId"]
             stats = bank_stats(student, item["bankId"])
             item["practice"] = f"{stats['done']}/{stats['total']}"
             item["progress"] = f"{stats['percent']}%"

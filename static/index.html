@@ -2,16 +2,46 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Журнал занятий</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Журнал занятий · Русский язык</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div id="app">
+    <div id="login-screen" class="login-screen hidden">
+      <form id="login-form" class="login-card">
+        <div class="brand-pill">
+          <span class="brand-feather">✒</span>
+          <span class="brand-name">РУССКИЙ ЯЗЫК</span>
+          <span class="brand-tag">10–11 КЛАССЫ</span>
+        </div>
+        <h1>Вход в кабинет</h1>
+        <p class="hint">Ученик: откройте ссылку педагога и введите логин с паролем. Появится только ваша таблица.</p>
+        <label>
+          Логин
+          <input id="login-name" type="text" name="login" required maxlength="80" autocomplete="username" />
+        </label>
+        <label>
+          Пароль
+          <input id="login-password" type="password" name="password" required maxlength="80" autocomplete="current-password" />
+        </label>
+        <p id="login-error" class="error"></p>
+        <button type="submit" class="primary-btn">Войти</button>
+      </form>
+    </div>
+
+    <div id="app" class="hidden">
       <header class="topbar">
         <div class="topbar-left">
           <button id="back-btn" class="ghost-btn hidden" type="button">← К списку</button>
-          <div>
+          <div class="brand-container">
+            <div class="brand-pill">
+              <span class="brand-feather">✒</span>
+              <span class="brand-name">РУССКИЙ ЯЗЫК</span>
+              <span class="brand-tag">10–11 КЛАССЫ</span>
+            </div>
             <h1 id="page-title">Журнал занятий</h1>
             <p id="page-subtitle" class="subtitle">Таблицы учеников</p>
           </div>
@@ -19,18 +49,20 @@
         <div class="topbar-right">
           <span id="save-status" class="save-status" aria-live="polite"></span>
           <div id="table-actions" class="hidden">
-            <label class="template-switch" id="template-wrap">
+            <label class="template-switch hidden" id="template-wrap">
               Шаблон
               <select id="template-select">
                 <option value="once">1 раз в неделю</option>
                 <option value="twice">2 раза в неделю</option>
               </select>
             </label>
-            <button id="add-row-btn" class="secondary-btn" type="button">Добавить строку</button>
+            <button id="add-row-btn" class="secondary-btn" type="button">В конец таблицы</button>
+            <button id="settings-btn" class="secondary-btn hidden" type="button">Настройки</button>
           </div>
           <button id="preview-btn" class="secondary-btn hidden" type="button">Как видит ученик</button>
           <button id="exit-preview-btn" class="secondary-btn hidden" type="button">Вернуться к учителю</button>
           <button id="add-student-btn" class="primary-btn" type="button">Добавить ученика</button>
+          <button id="logout-btn" class="secondary-btn hidden" type="button">Выйти</button>
         </div>
       </header>
 
@@ -43,12 +75,9 @@
         <div class="share-text">
           <strong>Ссылка с телефона из любой сети</strong>
           <code id="share-url">Готовится… не закрывайте окно запуска</code>
-          <strong id="share-lan-title">Запасной адрес в той же Wi‑Fi</strong>
-          <code id="share-lan"></code>
-          <p id="share-hint" class="hint">На телефоне вводите http://, не https://. Если Wi‑Fi не открывается, один раз запустите файл «разрешить-телефон.bat» и нажмите Да.</p>
+          <p id="share-hint" class="hint">На телефоне вводите http://, не https://.</p>
         </div>
         <button id="copy-link-btn" class="secondary-btn" type="button">Копировать интернет-ссылку</button>
-        <button id="copy-lan-btn" class="primary-btn" type="button">Копировать ссылку для телефона (Wi‑Fi)</button>
       </div>
 
       <main>
@@ -68,18 +97,18 @@
               <input id="student-name" type="text" name="name" required maxlength="80" placeholder="Например, Рома" autocomplete="off" />
             </label>
             <fieldset>
-              <legend>Шаблон таблицы</legend>
+              <legend>Как часто занимаемся</legend>
               <label class="radio">
                 <input type="radio" name="template" value="once" checked />
-                Занятия 1 раз в неделю
+                1 раз в неделю
               </label>
               <label class="radio">
                 <input type="radio" name="template" value="twice" />
-                Занятия 2 раза в неделю
+                2 раза в неделю
               </label>
             </fieldset>
             <fieldset>
-              <legend>Расписание — даты проставятся до мая</legend>
+              <legend>День и время — даты встанут до мая</legend>
               <label>
                 Дата первого занятия
                 <input id="start-date" type="date" name="startDate" required />
@@ -119,9 +148,16 @@
                 </label>
               </div>
             </fieldset>
+            <fieldset id="access-fields" class="hidden">
+              <legend>Вход ученика</legend>
+              <p class="hint">Логин: <strong id="settings-login"></strong></p>
+              <button type="button" id="reset-password-btn" class="secondary-btn">Выдать новый пароль</button>
+            </fieldset>
           </div>
           <div id="created-box" class="created-box hidden">
-            <p>Ученик добавлен. Таблицу можно открыть из списка.</p>
+            <p id="created-lead">Сохраните эти данные и отправьте ученику. Пароль больше не покажется.</p>
+            <pre id="created-creds"></pre>
+            <button type="button" id="copy-creds-btn" class="secondary-btn">Скопировать для отправки</button>
           </div>
           <p id="modal-error" class="error"></p>
           <div class="modal-actions">
@@ -129,6 +165,16 @@
             <button type="submit" id="create-submit" class="primary-btn">Создать таблицу</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="row-confirm" class="row-confirm hidden" role="alertdialog" aria-modal="true" aria-labelledby="row-confirm-text">
+      <div class="row-confirm-card">
+        <p id="row-confirm-text">Вы уверены, что хотите удалить эту строку?</p>
+        <div class="row-confirm-actions">
+          <button id="row-confirm-no" class="secondary-btn" type="button">Отмена</button>
+          <button id="row-confirm-yes" class="danger-btn" type="button">Удалить</button>
+        </div>
       </div>
     </div>
 
