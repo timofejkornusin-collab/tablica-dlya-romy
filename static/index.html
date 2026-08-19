@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Журнал занятий</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="back-btn" class="ghost-btn hidden" type="button">← К списку</button>
+          <div>
+            <h1 id="page-title">Журнал занятий</h1>
+            <p id="page-subtitle" class="subtitle">Таблицы учеников</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <span id="save-status" class="save-status" aria-live="polite"></span>
+          <div id="table-actions" class="hidden">
+            <label class="template-switch" id="template-wrap">
+              Шаблон
+              <select id="template-select">
+                <option value="once">1 раз в неделю</option>
+                <option value="twice">2 раза в неделю</option>
+              </select>
+            </label>
+            <button id="add-row-btn" class="secondary-btn" type="button">Добавить строку</button>
+          </div>
+          <button id="preview-btn" class="secondary-btn hidden" type="button">Как видит ученик</button>
+          <button id="exit-preview-btn" class="secondary-btn hidden" type="button">Вернуться к учителю</button>
+          <button id="add-student-btn" class="primary-btn" type="button">Добавить ученика</button>
+        </div>
+      </header>
+
+      <div id="preview-banner" class="preview-banner hidden">
+        Вы смотрите журнал глазами ученика: без кнопок педагога, без ключей и без правки таблицы.
+        Ответы в заданиях сохраняются по-настоящему. Чтобы снова править темы и расписание, нажмите «Вернуться к учителю».
+      </div>
+
+      <div id="share-bar" class="share-bar hidden">
+        <div class="share-text">
+          <strong>Ссылка с телефона из любой сети</strong>
+          <code id="share-url">Готовится… не закрывайте окно запуска</code>
+          <strong id="share-lan-title">Запасной адрес в той же Wi‑Fi</strong>
+          <code id="share-lan"></code>
+          <p id="share-hint" class="hint">На телефоне вводите http://, не https://. Если Wi‑Fi не открывается, один раз запустите файл «разрешить-телефон.bat» и нажмите Да.</p>
+        </div>
+        <button id="copy-link-btn" class="secondary-btn" type="button">Копировать интернет-ссылку</button>
+        <button id="copy-lan-btn" class="primary-btn" type="button">Копировать ссылку для телефона (Wi‑Fi)</button>
+      </div>
+
+      <main>
+        <section id="list-view" class="view"></section>
+        <section id="table-view" class="view hidden"></section>
+        <section id="practice-view" class="view hidden"></section>
+      </main>
+    </div>
+
+    <div id="modal" class="modal hidden" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+      <div class="modal-card">
+        <h2 id="modal-title">Новый ученик</h2>
+        <form id="student-form">
+          <div id="create-fields">
+            <label>
+              Имя
+              <input id="student-name" type="text" name="name" required maxlength="80" placeholder="Например, Рома" autocomplete="off" />
+            </label>
+            <fieldset>
+              <legend>Шаблон таблицы</legend>
+              <label class="radio">
+                <input type="radio" name="template" value="once" checked />
+                Занятия 1 раз в неделю
+              </label>
+              <label class="radio">
+                <input type="radio" name="template" value="twice" />
+                Занятия 2 раза в неделю
+              </label>
+            </fieldset>
+            <fieldset>
+              <legend>Расписание — даты проставятся до мая</legend>
+              <label>
+                Дата первого занятия
+                <input id="start-date" type="date" name="startDate" required />
+              </label>
+              <label>
+                День недели
+                <select id="weekday-0" name="weekday0">
+                  <option value="0">понедельник</option>
+                  <option value="1">вторник</option>
+                  <option value="2">среда</option>
+                  <option value="3" selected>четверг</option>
+                  <option value="4">пятница</option>
+                  <option value="5">суббота</option>
+                  <option value="6">воскресенье</option>
+                </select>
+              </label>
+              <label>
+                Время
+                <input id="time-0" type="time" name="time0" value="16:00" required />
+              </label>
+              <div id="second-slot" class="hidden">
+                <label>
+                  Второй день недели
+                  <select id="weekday-1" name="weekday1">
+                    <option value="0">понедельник</option>
+                    <option value="1" selected>вторник</option>
+                    <option value="2">среда</option>
+                    <option value="3">четверг</option>
+                    <option value="4">пятница</option>
+                    <option value="5">суббота</option>
+                    <option value="6">воскресенье</option>
+                  </select>
+                </label>
+                <label>
+                  Второе время
+                  <input id="time-1" type="time" name="time1" value="16:00" />
+                </label>
+              </div>
+            </fieldset>
+          </div>
+          <div id="created-box" class="created-box hidden">
+            <p>Ученик добавлен. Таблицу можно открыть из списка.</p>
+          </div>
+          <p id="modal-error" class="error"></p>
+          <div class="modal-actions">
+            <button type="button" id="cancel-modal" class="secondary-btn">Отмена</button>
+            <button type="submit" id="create-submit" class="primary-btn">Создать таблицу</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

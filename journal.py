@@ -1,0 +1,313 @@
+# -*- coding: utf-8 -*-
+"""Даты уроков, банки заданий и прогресс ученика."""
+
+from __future__ import annotations
+
+import json
+import re
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+DATA_DIR = ROOT / "data"
+BANKS_DIR = DATA_DIR / "banks"
+ROW_KEYS = ("date", "topic", "theory", "practice", "progress", "homework", "comment")
+WEEKDAY_NAMES = (
+    "понедельник",
+    "вторник",
+    "среда",
+    "четверг",
+    "пятница",
+    "суббота",
+    "воскресенье",
+)
+
+
+def empty_row(date_str: str = "") -> dict:
+    row = {key: "" for key in ROW_KEYS}
+    row["date"] = date_str
+    row["bankId"] = ""
+    return row
+
+
+def last_weekday_in_may(year: int, weekday: int) -> date:
+    cursor = date(year, 5, 31)
+    while cursor.weekday() != weekday:
+        cursor -= timedelta(days=1)
+    return cursor
+
+
+def school_year_may(start: date) -> int:
+    if start.month >= 6:
+        return start.year + 1
+    return start.year
+
+
+def parse_iso_date(value: str) -> date | None:
+    raw = str(value or "").strip()[:10]
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def normalize_time(value: str) -> str:
+    raw = str(value or "16:00").strip()
+    try:
+        parsed = datetime.strptime(raw, "%H:%M")
+    except ValueError:
+        return "16:00"
+    return parsed.strftime("%H:%M")
+
+
+def clean_slots(raw_slots, template: str) -> list[dict]:
+    slots = []
+    if not isinstance(raw_slots, list):
+        return slots
+    seen = set()
+    for item in raw_slots:
+        if not isinstance(item, dict):
+            continue
+        try:
+            weekday = int(item.get("weekday"))
+        except (TypeError, ValueError):
+            continue
+        if weekday < 0 or weekday > 6 or weekday in seen:
+            continue
+        seen.add(weekday)
+        slots.append({"weekday": weekday, "time": normalize_time(str(item.get("time") or "16:00"))})
+        if template != "twice" and len(slots) == 1:
+            break
+        if template == "twice" and len(slots) == 2:
+            break
+    return slots
+
+
+def generate_lesson_dates(start: date, slots: list[dict]) -> list[str]:
+    if not slots:
+        return []
+    times = {item["weekday"]: item["time"] for item in slots}
+    year = school_year_may(start)
+    end = max(last_weekday_in_may(year, item["weekday"]) for item in slots)
+    cursor = start
+    result = []
+    while cursor <= end:
+        if cursor.weekday() in times:
+            result.append(f"{cursor.strftime('%d.%m.%Y')}, {times[cursor.weekday()]}")
+        cursor += timedelta(days=1)
+    return result
+
+
+def apply_schedule(student: dict, start: date, slots: list[dict], template: str) -> None:
+    dates = generate_lesson_dates(start, slots)
+    old_by_date = {}
+    for row in student.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        key = str(row.get("date") or "").split(",")[0].strip()
+        if key and key not in old_by_date:
+            old_by_date[key] = row
+    new_rows = []
+    for date_str in dates:
+        key = date_str.split(",")[0].strip()
+        prev = old_by_date.get(key, {})
+        row = empty_row(date_str)
+        for field in ("topic", "theory", "homework", "comment", "bankId"):
+            row[field] = str(prev.get(field) or "")
+        new_rows.append(row)
+    student["rows"] = new_rows
+    student["template"] = template
+    student["schedule"] = {
+        "startDate": start.isoformat(),
+        "slots": slots,
+    }
+
+
+def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bool = False) -> list[dict]:
+    cleaned = []
+    old = keep_from_old or []
+    if not isinstance(rows, list):
+        return cleaned
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        prev = old[index] if index < len(old) and isinstance(old[index], dict) else {}
+        item = empty_row()
+        for key in ROW_KEYS:
+            item[key] = str(row.get(key, "") or "")
+        item["bankId"] = str(row.get("bankId") or prev.get("bankId") or "")
+        if student_locked:
+            for key in ("topic", "theory", "homework", "comment", "bankId"):
+                item[key] = str(prev.get(key, "") or "")
+        if item["bankId"]:
+            item["practice"] = ""
+            item["progress"] = ""
+        cleaned.append(item)
+    return cleaned
+
+
+def load_bank(bank_id: str) -> dict | None:
+    safe = re.sub(r"[^a-z0-9\-]", "", str(bank_id or "").lower())
+    path = BANKS_DIR / f"{safe}.json"
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict) or not isinstance(raw.get("tasks"), list):
+        return None
+    raw["id"] = safe
+    return raw
+
+
+def save_bank(bank: dict) -> None:
+    BANKS_DIR.mkdir(parents=True, exist_ok=True)
+    path = BANKS_DIR / f"{bank['id']}.json"
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(bank, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def list_banks() -> list[dict]:
+    BANKS_DIR.mkdir(parents=True, exist_ok=True)
+    result = []
+    for path in sorted(BANKS_DIR.glob("*.json")):
+        bank = load_bank(path.stem)
+        if not bank:
+            continue
+        result.append(
+            {
+                "id": bank["id"],
+                "title": bank.get("title") or bank["id"],
+                "total": len(bank.get("tasks") or []),
+            }
+        )
+    return result
+
+
+def normalize_answer(raw: str) -> str:
+    digits = re.sub(r"[^1-5]", "", str(raw or ""))
+    return "".join(sorted(set(digits)))
+
+
+def bank_stats(student: dict, bank_id: str) -> dict:
+    bank = load_bank(bank_id)
+    total = len(bank.get("tasks") or []) if bank else 0
+    answers = ((student.get("progress") or {}).get(bank_id) or {}) if isinstance(student.get("progress"), dict) else {}
+    done = 0
+    correct = 0
+    if bank:
+        for task in bank["tasks"]:
+            given = normalize_answer(str(answers.get(str(task.get("n")), "") or ""))
+            if not given:
+                continue
+            done += 1
+            key = normalize_answer(str(task.get("answer") or ""))
+            if key and given == key:
+                correct += 1
+    percent = int(round(100 * done / total)) if total else 0
+    return {"done": done, "total": total, "correct": correct, "percent": percent}
+
+
+def progress_color(percent: int) -> str:
+    if percent < 20:
+        return "red"
+    if percent < 50:
+        return "yellow"
+    if percent < 80:
+        return "light"
+    return "dark"
+
+
+def public_student(student: dict | None) -> dict | None:
+    if not student:
+        return None
+    rows = []
+    for row in student.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        item = {key: str(row.get(key, "") or "") for key in ROW_KEYS}
+        item["bankId"] = str(row.get("bankId") or "")
+        if item["bankId"]:
+            stats = bank_stats(student, item["bankId"])
+            item["practice"] = f"{stats['done']}/{stats['total']}"
+            item["progress"] = f"{stats['percent']}%"
+            item["progressPercent"] = stats["percent"]
+            item["progressColor"] = progress_color(stats["percent"])
+        rows.append(item)
+    return {
+        "id": student.get("id"),
+        "name": student.get("name") or "",
+        "template": "twice" if student.get("template") == "twice" else "once",
+        "login": student.get("login") or "",
+        "password_is_initial": bool(student.get("password_is_initial")),
+        "rows": rows,
+        "schedule": student.get("schedule") if isinstance(student.get("schedule"), dict) else None,
+    }
+
+
+def public_practice(bank: dict, student: dict, role: str) -> dict:
+    answers = ((student.get("progress") or {}).get(bank["id"]) or {}) if isinstance(student.get("progress"), dict) else {}
+    tasks = []
+    for task in bank.get("tasks") or []:
+        number = task.get("n")
+        given = str(answers.get(str(number), "") or "")
+        key = normalize_answer(str(task.get("answer") or ""))
+        item = {
+            "n": number,
+            "prompt": task.get("prompt") or bank.get("instruction") or "",
+            "options": task.get("options") or [],
+            "given": given,
+            "status": "empty",
+        }
+        if role == "teacher":
+            item["answer"] = str(task.get("answer") or "")
+        if given and key:
+            item["status"] = "ok" if normalize_answer(given) == key else "bad"
+        elif given:
+            item["status"] = "saved"
+        tasks.append(item)
+    stats = bank_stats(student, bank["id"])
+    return {
+        "id": bank["id"],
+        "title": bank.get("title") or bank["id"],
+        "instruction": bank.get("instruction") or "",
+        "tasks": tasks,
+        "stats": stats,
+        "statsColor": progress_color(stats["percent"]),
+    }
+
+
+def set_task_answer(student: dict, bank_id: str, number: int, answer: str) -> dict:
+    progress = student.setdefault("progress", {})
+    if not isinstance(progress, dict):
+        progress = {}
+        student["progress"] = progress
+    bucket = progress.setdefault(bank_id, {})
+    if not isinstance(bucket, dict):
+        bucket = {}
+        progress[bank_id] = bucket
+    normalized_input = str(answer or "").strip()
+    if not normalized_input:
+        bucket.pop(str(number), None)
+    else:
+        bucket[str(number)] = normalized_input
+    return bank_stats(student, bank_id)
+
+
+def set_bank_key(bank_id: str, number: int, answer: str) -> bool:
+    bank = load_bank(bank_id)
+    if not bank:
+        return False
+    found = False
+    for task in bank["tasks"]:
+        if int(task.get("n") or 0) == number:
+            task["answer"] = normalize_answer(answer) if str(answer).strip() else ""
+            found = True
+            break
+    if found:
+        save_bank(bank)
+    return found
