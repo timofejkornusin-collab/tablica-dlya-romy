@@ -630,13 +630,16 @@ textarea:focus {
 }
 
 .col-row-tools { width: 44px; }
-.col-date      { width: 12%; min-width: 110px; }
-.col-topic     { width: 16%; min-width: 140px; }
-.col-theory    { width: 16%; min-width: 140px; }
-.col-practice  { width: 14%; min-width: 130px; }
-.col-progress  { width: 9%;  min-width: 90px; }
-.col-homework  { width: 16%; min-width: 140px; }
-.col-comment   { width: 17%; min-width: 140px; }
+
+@media (min-width: 981px) {
+  .col-date      { width: 12%; min-width: 110px; }
+  .col-topic     { width: 16%; min-width: 140px; }
+  .col-theory    { width: 16%; min-width: 140px; }
+  .col-practice  { width: 14%; min-width: 130px; }
+  .col-progress  { width: 9%;  min-width: 90px; }
+  .col-homework  { width: 16%; min-width: 140px; }
+  .col-comment   { width: 17%; min-width: 140px; }
+}
 
 .material-cell {
   position: absolute;
@@ -1349,8 +1352,9 @@ textarea[readonly] {
   }
 
   table {
-    min-width: 0;
-    width: 100%;
+    display: block;
+    min-width: 0 !important;
+    width: 100% !important;
     border: 0;
     font-size: 0.95rem;
   }
@@ -1363,20 +1367,26 @@ textarea[readonly] {
     display: flex;
     flex-direction: column;
     gap: 14px;
+    width: 100%;
   }
 
   tbody tr {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
     height: auto;
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
+    box-sizing: border-box;
   }
 
-  tbody tr.lesson-upcoming::before {
+  tbody tr.lesson-upcoming::before,
+  .lesson-cards tbody tr.lesson-upcoming::before {
     content: "Следующий урок";
     display: block;
     padding: 8px 14px;
@@ -1393,20 +1403,31 @@ textarea[readonly] {
     background: transparent;
   }
 
-  td {
+  td,
+  td.col-date,
+  td.col-topic,
+  td.col-theory,
+  td.col-practice,
+  td.col-progress,
+  td.col-homework,
+  td.col-comment,
+  td.col-row-tools {
     display: grid;
-    grid-template-columns: 7.2rem minmax(0, 1fr);
+    grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr);
     gap: 8px 12px;
     align-items: start;
-    width: 100%;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 0 0 auto;
     height: auto !important;
     min-height: 0;
-    min-width: 0 !important;
     padding: 12px 14px;
     border: 0;
     border-bottom: 1px solid var(--line);
     background: #fff;
     position: relative;
+    box-sizing: border-box;
   }
 
   td:last-child {
@@ -1442,12 +1463,21 @@ textarea[readonly] {
     position: static;
     inset: auto;
     width: 100%;
+    max-width: 100%;
     height: auto;
-    min-height: 72px;
+    min-height: 48px;
     padding: 8px 10px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: #fff;
+    box-sizing: border-box;
+  }
+
+  td.col-date textarea.cell-fill {
+    min-height: 44px;
+    white-space: nowrap;
+    overflow-x: auto;
+    font-variant-numeric: tabular-nums;
   }
 
   .material-cell {
@@ -1583,8 +1613,15 @@ textarea[readonly] {
     grid-template-columns: 1fr;
   }
 
-  td {
-    grid-template-columns: 1fr;
+  td,
+  td.col-date,
+  td.col-topic,
+  td.col-theory,
+  td.col-practice,
+  td.col-progress,
+  td.col-homework,
+  td.col-comment {
+    grid-template-columns: 1fr !important;
     gap: 6px;
   }
 

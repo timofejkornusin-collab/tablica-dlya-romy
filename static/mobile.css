@@ -1,0 +1,154 @@
+/* Телефон и планшет: карточки на всю ширину, без узкого столбика слева. */
+@media (max-width: 980px) {
+  #table-view,
+  .table-wrap,
+  .lesson-cards,
+  table,
+  .lesson-cards table,
+  tbody,
+  .lesson-cards tbody {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .table-wrap,
+  .lesson-cards {
+    overflow: visible !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  table thead,
+  .lesson-cards thead {
+    display: none !important;
+  }
+
+  tbody,
+  .lesson-cards tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+
+  tbody tr,
+  .lesson-cards tbody tr {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    background: #fff !important;
+    border: 1px solid #ded4c2 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 6px rgba(33, 28, 25, 0.04) !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  tbody tr.lesson-upcoming::before,
+  .lesson-cards tbody tr.lesson-upcoming::before {
+    content: "Следующий урок" !important;
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 8px 14px !important;
+    background: #fdf5e7 !important;
+    color: #18334c !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+  }
+
+  td,
+  td.col-date,
+  td.col-topic,
+  td.col-theory,
+  td.col-practice,
+  td.col-progress,
+  td.col-homework,
+  td.col-comment,
+  td.col-row-tools,
+  .lesson-cards td {
+    display: grid !important;
+    grid-template-columns: minmax(7rem, 38%) minmax(0, 1fr) !important;
+    gap: 8px 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 0 0 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 12px 14px !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid #ded4c2 !important;
+    box-sizing: border-box !important;
+  }
+
+  td:last-child,
+  .lesson-cards td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  td textarea,
+  td input,
+  .cell-fill,
+  .material-cell,
+  .material-cell textarea,
+  .practice-box,
+  .progress-swatch {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  td.col-date textarea,
+  td.col-date .cell-fill {
+    min-height: 44px !important;
+    white-space: nowrap !important;
+    overflow-x: auto !important;
+  }
+
+  .material-tools,
+  .file-corner {
+    position: static !important;
+  }
+
+  tbody tr.insert-gap,
+  .lesson-cards tbody tr.insert-gap {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .insert-gap td {
+    display: flex !important;
+    grid-template-columns: none !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+}
+
+@media (max-width: 560px) {
+  td,
+  td.col-date,
+  td.col-topic,
+  td.col-theory,
+  td.col-practice,
+  td.col-progress,
+  td.col-homework,
+  td.col-comment,
+  .lesson-cards td {
+    grid-template-columns: 1fr !important;
+  }
+}
