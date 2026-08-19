@@ -58,6 +58,9 @@ const els = {
   rowConfirm: document.getElementById("row-confirm"),
   rowConfirmYes: document.getElementById("row-confirm-yes"),
   rowConfirmNo: document.getElementById("row-confirm-no"),
+  logoutConfirm: document.getElementById("logout-confirm"),
+  logoutConfirmYes: document.getElementById("logout-confirm-yes"),
+  logoutConfirmNo: document.getElementById("logout-confirm-no"),
   tableActions: document.getElementById("table-actions"),
   templateWrap: document.getElementById("template-wrap"),
   templateSelect: document.getElementById("template-select"),
@@ -131,6 +134,32 @@ function isStudentView() {
 
 function isTeacherUi() {
   return isTeacherAccount() && !state.previewAsStudent;
+}
+
+function hideLogoutConfirm() {
+  if (els.logoutConfirm) els.logoutConfirm.classList.add("hidden");
+}
+
+function showLogoutConfirm() {
+  hideRowConfirm();
+  if (!els.logoutConfirm) return;
+  els.logoutConfirm.classList.remove("hidden");
+  if (els.logoutConfirmNo) els.logoutConfirmNo.focus();
+}
+
+async function performLogout() {
+  hideLogoutConfirm();
+  try {
+    await api("/api/logout", { method: "POST", body: "{}" });
+  } catch (_error) {
+    /* всё равно выходим на экран входа */
+  }
+  state.me = null;
+  state.students = [];
+  state.currentId = null;
+  state.localTeacher = false;
+  state.previewAsStudent = false;
+  showLoginScreen();
 }
 
 function hideRowConfirm() {
@@ -315,12 +344,14 @@ function showApp() {
   if (els.loginScreen) els.loginScreen.classList.add("hidden");
   els.app.classList.remove("hidden");
   els.addStudentBtn.classList.toggle("hidden", !isTeacherUi());
-  if (els.logoutBtn) els.logoutBtn.classList.toggle("hidden", state.localTeacher);
+  if (els.logoutBtn) els.logoutBtn.classList.remove("hidden");
   updateModeChrome();
   updateShareBar();
 }
 
 function showLoginScreen() {
+  hideLogoutConfirm();
+  hideRowConfirm();
   if (els.app) els.app.classList.add("hidden");
   if (els.loginScreen) els.loginScreen.classList.remove("hidden");
   if (els.loginError) els.loginError.textContent = "";
@@ -1283,17 +1314,35 @@ if (els.loginForm) {
 }
 
 if (els.logoutBtn) {
-  els.logoutBtn.addEventListener("click", async () => {
-    try {
-      await api("/api/logout", { method: "POST", body: "{}" });
-    } catch (_error) {
-      /* всё равно выходим на экран входа */
+  els.logoutBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    showLogoutConfirm();
+  });
+}
+document.addEventListener(
+  "click",
+  (event) => {
+    const logoutBtn = event.target.closest("#logout-btn");
+    if (logoutBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      showLogoutConfirm();
     }
-    state.me = null;
-    state.students = [];
-    state.currentId = null;
-    state.localTeacher = false;
-    showLoginScreen();
+  },
+  true
+);
+if (els.logoutConfirmYes) {
+  els.logoutConfirmYes.addEventListener("click", () => {
+    performLogout();
+  });
+}
+if (els.logoutConfirmNo) {
+  els.logoutConfirmNo.addEventListener("click", hideLogoutConfirm);
+}
+if (els.logoutConfirm) {
+  els.logoutConfirm.addEventListener("click", (event) => {
+    if (event.target === els.logoutConfirm) hideLogoutConfirm();
   });
 }
 

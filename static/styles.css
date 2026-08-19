@@ -962,6 +962,10 @@ textarea:focus {
   z-index: 100;
 }
 
+#logout-confirm {
+  z-index: 300;
+}
+
 .modal-card,
 .row-confirm-card {
   width: min(520px, 100%);

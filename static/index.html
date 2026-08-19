@@ -178,6 +178,16 @@
       </div>
     </div>
 
-    <script src="app.js"></script>
+    <div id="logout-confirm" class="row-confirm hidden" role="alertdialog" aria-modal="true" aria-labelledby="logout-confirm-text">
+      <div class="row-confirm-card">
+        <p id="logout-confirm-text">Вы уверены, что хотите выйти?</p>
+        <div class="row-confirm-actions">
+          <button id="logout-confirm-no" class="secondary-btn" type="button">Отмена</button>
+          <button id="logout-confirm-yes" class="primary-btn" type="button">Выйти</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js?v=logout3"></script>
   </body>
 </html>
