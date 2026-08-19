@@ -577,16 +577,18 @@ function visibleRowIndexes(student) {
   if (!isStudentView()) {
     return rows.map((_, index) => index);
   }
+  if (!rows.length) return [];
   const filled = [];
   rows.forEach((row, index) => {
     if (rowHasLessonContent(row)) filled.push(index);
   });
-  if (!filled.length) return [];
+  if (!filled.length) return [0];
+  const visible = filled.slice();
   const next = filled[filled.length - 1] + 1;
-  if (next < rows.length && !filled.includes(next)) {
-    filled.push(next);
+  if (next < rows.length && !visible.includes(next)) {
+    visible.push(next);
   }
-  return filled;
+  return visible;
 }
 
 function renderTable() {
@@ -619,7 +621,7 @@ function renderTable() {
   }
   els.pageTitle.textContent = student.name;
   els.pageSubtitle.textContent = isStudentView()
-    ? "Заполненные уроки и дата следующего занятия."
+    ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
     : "Между уроками нажмите «+». Крестик удаляет строку. В конец таблицы — отдельная кнопка.";
   updateModeChrome();
   updateShareBar();
@@ -628,8 +630,8 @@ function renderTable() {
   if (isStudentView() && rowIndexes.length === 0) {
     els.tableView.innerHTML = `
       <div class="empty-state">
-        <p>Педагог ещё не заполнил занятия.</p>
-        <p>Когда появятся тема, материалы или домашнее задание, урок откроется здесь. Следом будет видна дата следующего занятия.</p>
+        <p>Таблица пока пустая.</p>
+        <p>Когда педагог добавит расписание, здесь появится первая строка занятия.</p>
       </div>
     `;
     return;
