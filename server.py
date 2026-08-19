@@ -1172,7 +1172,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             stats = journal.set_task_answer(student, bank_id, number, str(payload.get("answer") or ""))
             save_data(data)
-        self._send_json({"ok": True, "stats": stats, "statsColor": journal.progress_color(stats["correctPercent"])})
+        self._send_json({"ok": True, "stats": stats, "statsColor": journal.progress_color(stats["percent"])})
 
     def _save_bank_key(self, user: dict) -> None:
         if user["role"] != "teacher":

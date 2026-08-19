@@ -835,80 +835,11 @@ textarea:focus {
   font-family: "Playfair Display", serif;
   color: var(--ink-heading);
 }
-
-.practice-stats,
-.practice-scales {
   margin: 0 0 20px;
   padding: 16px 20px;
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--line);
-  background: var(--card);
-}
-
-.practice-scales {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.practice-scale {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.scale-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 0.92rem;
-}
-
-.scale-head span {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.scale-head strong {
-  color: var(--navy);
-  font-weight: 700;
-  text-align: right;
-}
-
-.scale-track {
-  height: 12px;
-  background: #efe8dc;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.scale-fill {
-  height: 100%;
-  border-radius: 999px;
-  min-width: 0;
-  transition: width 0.2s ease;
-}
-
-.scale-fill.scale-done {
-  background: var(--navy);
-}
-
-.scale-fill.progress-red {
-  background: #d94f3d;
-}
-
-.scale-fill.progress-yellow {
-  background: #d49335;
-}
-
-.scale-fill.progress-light {
-  background: #57ad79;
-}
-
-.scale-fill.progress-dark {
-  background: #236940;
 }
 
 .practice-stats.progress-red {
@@ -941,12 +872,9 @@ textarea:focus {
   margin-bottom: 4px;
 }
 
-.practice-stats .stats-hint,
-.practice-scales .stats-hint {
+.practice-stats .stats-hint {
   font-size: 0.88rem;
   opacity: 0.9;
-  margin: 0;
-  color: var(--muted);
 }
 
 .task-list {
@@ -1676,8 +1604,7 @@ textarea[readonly] {
     min-height: 44px;
   }
 
-  .practice-stats,
-  .practice-scales {
+  .practice-stats {
     padding: 14px;
   }
 }

@@ -246,7 +246,6 @@ def bank_stats(student: dict, bank_id: str) -> dict:
     answers = ((student.get("progress") or {}).get(bank_id) or {}) if isinstance(student.get("progress"), dict) else {}
     done = 0
     correct = 0
-    incorrect = 0
     if bank:
         for task in bank["tasks"]:
             given = normalize_answer(str(answers.get(str(task.get("n")), "") or ""))
@@ -254,23 +253,10 @@ def bank_stats(student: dict, bank_id: str) -> dict:
                 continue
             done += 1
             key = normalize_answer(str(task.get("answer") or ""))
-            if not key:
-                continue
-            if given == key:
+            if key and given == key:
                 correct += 1
-            else:
-                incorrect += 1
-    done_percent = int(round(100 * done / total)) if total else 0
-    correct_percent = int(round(100 * correct / total)) if total else 0
-    return {
-        "done": done,
-        "total": total,
-        "correct": correct,
-        "incorrect": incorrect,
-        "percent": done_percent,
-        "donePercent": done_percent,
-        "correctPercent": correct_percent,
-    }
+    percent = int(round(100 * done / total)) if total else 0
+    return {"done": done, "total": total, "correct": correct, "percent": percent}
 
 
 def progress_color(percent: int) -> str:
@@ -346,7 +332,7 @@ def public_practice(bank: dict, student: dict, role: str) -> dict:
         "instruction": bank.get("instruction") or "",
         "tasks": tasks,
         "stats": stats,
-        "statsColor": progress_color(stats["correctPercent"]),
+        "statsColor": progress_color(stats["percent"]),
     }
 
 
