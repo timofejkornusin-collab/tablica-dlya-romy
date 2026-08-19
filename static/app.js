@@ -581,6 +581,7 @@ function closeModal(goToTable) {
 function renderList() {
   hideRowConfirm();
   hideFindDialog();
+  document.body.classList.remove("practice-open");
   state.view = "list";
   state.currentId = null;
   state.previewAsStudent = false;
@@ -693,6 +694,7 @@ function renderTable() {
     return;
   }
   if (!isTeacherUi()) hideRowConfirm();
+  document.body.classList.remove("practice-open");
 
   if (!Array.isArray(student.rows)) {
     student.rows = [];
@@ -813,6 +815,11 @@ function renderTable() {
   `;
 }
 
+function closePractice() {
+  document.body.classList.remove("practice-open");
+  loadStudents().then(renderTable).catch((error) => setSaveStatus(error.message));
+}
+
 async function openPractice(bankId) {
   const student = currentStudent();
   if (!student || !bankId) return;
@@ -824,6 +831,7 @@ async function openPractice(bankId) {
   );
   state.view = "practice";
   state.practice = data;
+  document.body.classList.add("practice-open");
   els.listView.classList.add("hidden");
   els.tableView.classList.add("hidden");
   els.practiceView.classList.remove("hidden");
@@ -839,6 +847,8 @@ async function openPractice(bankId) {
   updateModeChrome();
   updateShareBar();
   renderPractice();
+  window.scrollTo(0, 0);
+  els.practiceView.scrollTop = 0;
 }
 
 function renderPractice() {
@@ -879,14 +889,20 @@ function renderPractice() {
     .join("");
 
   els.practiceView.innerHTML = `
-    <div class="practice-stats progress-${color}">
-      <div class="stats-text">
-        <strong>Выполнено:</strong> ${stats.done} из ${stats.total} (${stats.percent}%).
-        ${stats.correct ? ` · <strong>Верно:</strong> ${stats.correct}.` : ""}
+    <div class="practice-screen">
+      <div class="practice-toolbar">
+        <button class="primary-btn practice-back" type="button">← К таблице</button>
+        <h2>${escapeHtml(data.title || "Задания")}</h2>
       </div>
-      <div class="stats-hint">Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.</div>
+      <div class="practice-stats progress-${color}">
+        <div class="stats-text">
+          <strong>Выполнено:</strong> ${stats.done} из ${stats.total} (${stats.percent}%).
+          ${stats.correct ? ` · <strong>Верно:</strong> ${stats.correct}.` : ""}
+        </div>
+        <div class="stats-hint">Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.</div>
+      </div>
+      <div class="task-list">${tasks}</div>
     </div>
-    <div class="task-list">${tasks}</div>
   `;
 }
 
@@ -1053,7 +1069,7 @@ els.startDate.addEventListener("change", () => {
 });
 els.backBtn.addEventListener("click", () => {
   if (state.view === "practice") {
-    loadStudents().then(renderTable).catch((error) => setSaveStatus(error.message));
+    closePractice();
     return;
   }
   renderList();
@@ -1320,6 +1336,10 @@ els.tableView.addEventListener("click", async (event) => {
 });
 
 els.practiceView.addEventListener("click", async (event) => {
+  if (event.target.closest(".practice-back")) {
+    closePractice();
+    return;
+  }
   const student = currentStudent();
   const practice = state.practice;
   if (!student || !practice) return;

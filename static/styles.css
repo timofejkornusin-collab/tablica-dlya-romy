@@ -826,8 +826,15 @@ textarea:focus {
   color: #ffffff;
 }
 
-/* PRACTICE SCREEN / TASKS */
-.practice-stats {
+.practice-toolbar {
+  display: none;
+}
+
+.practice-toolbar h2 {
+  margin: 0;
+  font-family: "Playfair Display", serif;
+  color: var(--ink-heading);
+}
   margin: 0 0 20px;
   padding: 16px 20px;
   border-radius: var(--radius);
