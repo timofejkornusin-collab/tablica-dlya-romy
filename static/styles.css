@@ -500,8 +500,33 @@ tbody tr {
   background: #fffdf6;
 }
 
-.lesson-upcoming td.col-date {
-  box-shadow: inset 4px 0 0 var(--gold);
+tbody tr.row-found td {
+  background: #fff6df;
+  box-shadow: inset 0 0 0 2px var(--gold);
+}
+
+.find-card {
+  text-align: left;
+}
+
+.find-card p {
+  text-align: center;
+}
+
+.find-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.find-card input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
 }
 
 tbody tr:hover td {

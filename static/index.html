@@ -56,7 +56,9 @@
                 <option value="twice">2 раза в неделю</option>
               </select>
             </label>
-            <button id="add-row-btn" class="secondary-btn" type="button">В конец таблицы</button>
+            <div id="find-wrap" class="find-wrap">
+              <button id="find-row-btn" class="secondary-btn" type="button">Найти</button>
+            </div>
             <button id="settings-btn" class="secondary-btn hidden" type="button">Настройки</button>
           </div>
           <button id="preview-btn" class="secondary-btn hidden" type="button">Как видит ученик</button>
@@ -188,6 +190,21 @@
       </div>
     </div>
 
-    <script src="app.js?v=student-rows1"></script>
+    <div id="find-dialog" class="row-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="find-dialog-title">
+      <form id="find-form" class="row-confirm-card find-card">
+        <p id="find-dialog-title">Найти строку по дате</p>
+        <label>
+          Дата урока
+          <input id="find-date" type="text" name="findDate" inputmode="decimal" maxlength="20" placeholder="например 10.09.2026" autocomplete="off" />
+        </label>
+        <p id="find-error" class="error"></p>
+        <div class="row-confirm-actions">
+          <button id="find-cancel" class="secondary-btn" type="button">Отмена</button>
+          <button class="primary-btn" type="submit">Найти</button>
+        </div>
+      </form>
+    </div>
+
+    <script src="app.js?v=find-date1"></script>
   </body>
 </html>

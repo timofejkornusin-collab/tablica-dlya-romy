@@ -39,6 +39,7 @@ const state = {
   previewAsStudent: false,
   settingsStudentId: null,
   pendingDeleteRow: null,
+  revealedRowIndex: null,
   localTeacher: false,
   pendingNewStudent: false,
 };
@@ -64,7 +65,13 @@ const els = {
   tableActions: document.getElementById("table-actions"),
   templateWrap: document.getElementById("template-wrap"),
   templateSelect: document.getElementById("template-select"),
-  addRowBtn: document.getElementById("add-row-btn"),
+  findWrap: document.getElementById("find-wrap"),
+  findRowBtn: document.getElementById("find-row-btn"),
+  findDialog: document.getElementById("find-dialog"),
+  findForm: document.getElementById("find-form"),
+  findDate: document.getElementById("find-date"),
+  findError: document.getElementById("find-error"),
+  findCancel: document.getElementById("find-cancel"),
   settingsBtn: document.getElementById("settings-btn"),
   modalTitle: document.getElementById("modal-title"),
   saveStatus: document.getElementById("save-status"),
@@ -136,12 +143,91 @@ function isTeacherUi() {
   return isTeacherAccount() && !state.previewAsStudent;
 }
 
+function hideFindDialog() {
+  if (els.findDialog) els.findDialog.classList.add("hidden");
+  if (els.findError) els.findError.textContent = "";
+}
+
+function showFindDialog() {
+  hideRowConfirm();
+  hideLogoutConfirm();
+  if (!els.findDialog) return;
+  if (els.findError) els.findError.textContent = "";
+  els.findDialog.classList.remove("hidden");
+  if (els.findDate) {
+    els.findDate.value = "";
+    els.findDate.focus();
+  }
+}
+
+function parseDateParts(value) {
+  const raw = String(value || "").trim();
+  const iso = raw.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+  if (iso) {
+    return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) };
+  }
+  const dmy = raw.match(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/);
+  if (!dmy) return null;
+  let year = dmy[3] ? Number(dmy[3]) : null;
+  if (year != null && year < 100) year += 2000;
+  return { year, month: Number(dmy[2]), day: Number(dmy[1]) };
+}
+
+function rowMatchesDate(row, query) {
+  const needle = String(query || "").trim();
+  if (!needle) return false;
+  const rowDate = String((row && row.date) || "");
+  const wanted = parseDateParts(needle);
+  const got = parseDateParts(rowDate);
+  if (wanted && got) {
+    if (wanted.day !== got.day || wanted.month !== got.month) return false;
+    if (wanted.year != null && got.year != null && wanted.year !== got.year) return false;
+    return true;
+  }
+  const compact = (text) => text.replace(/\s+/g, "").toLowerCase();
+  return compact(rowDate).includes(compact(needle));
+}
+
+function scrollToLessonRow(index) {
+  const row = els.tableView.querySelector(`tr[data-row="${index}"]`);
+  if (!row) return false;
+  document.querySelectorAll("tr.row-found").forEach((item) => item.classList.remove("row-found"));
+  row.classList.add("row-found");
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => row.classList.remove("row-found"), 2600);
+  return true;
+}
+
+function findLessonByDate(query) {
+  const student = currentStudent();
+  const rows = student && Array.isArray(student.rows) ? student.rows : [];
+  if (!student || !rows.length) {
+    return { ok: false, error: "Сначала откройте таблицу ученика." };
+  }
+  const index = rows.findIndex((row) => rowMatchesDate(row, query));
+  if (index < 0) {
+    return { ok: false, error: "Строка с такой датой не найдена." };
+  }
+  state.revealedRowIndex = index;
+  renderTable();
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (!scrollToLessonRow(index) && els.findError) {
+        els.findError.textContent = "Строка есть, но не получилось к ней перейти.";
+      }
+    });
+  });
+  setSaveStatus(`Открыта строка с датой ${rows[index].date || query}`);
+  return { ok: true, index };
+}
+
 function hideLogoutConfirm() {
   if (els.logoutConfirm) els.logoutConfirm.classList.add("hidden");
 }
 
 function showLogoutConfirm() {
   hideRowConfirm();
+  hideFindDialog();
   if (!els.logoutConfirm) return;
   els.logoutConfirm.classList.remove("hidden");
   if (els.logoutConfirmNo) els.logoutConfirmNo.focus();
@@ -352,6 +438,7 @@ function showApp() {
 function showLoginScreen() {
   hideLogoutConfirm();
   hideRowConfirm();
+  hideFindDialog();
   if (els.app) els.app.classList.add("hidden");
   if (els.loginScreen) els.loginScreen.classList.remove("hidden");
   if (els.loginError) els.loginError.textContent = "";
@@ -493,9 +580,11 @@ function closeModal(goToTable) {
 
 function renderList() {
   hideRowConfirm();
+  hideFindDialog();
   state.view = "list";
   state.currentId = null;
   state.previewAsStudent = false;
+  state.revealedRowIndex = null;
   els.listView.classList.remove("hidden");
   els.tableView.classList.add("hidden");
   els.practiceView.classList.add("hidden");
@@ -582,11 +671,17 @@ function visibleRowIndexes(student) {
   rows.forEach((row, index) => {
     if (rowHasLessonContent(row)) filled.push(index);
   });
-  if (!filled.length) return [0];
-  const visible = filled.slice();
-  const next = filled[filled.length - 1] + 1;
-  if (next < rows.length && !visible.includes(next)) {
-    visible.push(next);
+  const visible = !filled.length ? [0] : filled.slice();
+  if (filled.length) {
+    const next = filled[filled.length - 1] + 1;
+    if (next < rows.length && !visible.includes(next)) {
+      visible.push(next);
+    }
+  }
+  const revealed = state.revealedRowIndex;
+  if (Number.isInteger(revealed) && revealed >= 0 && revealed < rows.length && !visible.includes(revealed)) {
+    visible.push(revealed);
+    visible.sort((a, b) => a - b);
   }
   return visible;
 }
@@ -612,17 +707,17 @@ function renderTable() {
   els.tableView.classList.remove("hidden");
   els.backBtn.classList.toggle("hidden", isStudentView());
   els.backBtn.textContent = "← К списку";
-  els.tableActions.classList.toggle("hidden", isStudentView());
+  els.tableActions.classList.remove("hidden");
   els.addStudentBtn.classList.add("hidden");
   els.templateWrap.classList.add("hidden");
-  els.addRowBtn.classList.toggle("hidden", !isTeacherUi());
+  if (els.findWrap) els.findWrap.classList.remove("hidden");
   if (els.settingsBtn) {
     els.settingsBtn.classList.toggle("hidden", !isTeacherUi());
   }
   els.pageTitle.textContent = student.name;
   els.pageSubtitle.textContent = isStudentView()
     ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
-    : "Между уроками нажмите «+». Крестик удаляет строку. В конец таблицы — отдельная кнопка.";
+    : "Между уроками нажмите «+». «Найти» открывает строку по дате.";
   updateModeChrome();
   updateShareBar();
 
@@ -697,8 +792,10 @@ function renderTable() {
             <button class="row-delete" type="button" data-row="${rowIndex}" title="Удалить этот урок">×</button>
           </td>`
         : "";
-      const rowClass = upcoming ? ' class="lesson-upcoming"' : "";
-      return `${tools ? `<tr${rowClass}>${tools}${cells}</tr>` : `<tr${rowClass}>${cells}</tr>`}${
+      const classes = [];
+      if (upcoming) classes.push("lesson-upcoming");
+      const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";
+      return `<tr${classAttr} data-row="${rowIndex}">${tools}${cells}</tr>${
         isTeacherUi() ? insertGap(rowIndex + 1) : ""
       }`;
   };
@@ -720,6 +817,7 @@ async function openPractice(bankId) {
   const student = currentStudent();
   if (!student || !bankId) return;
   hideRowConfirm();
+  hideFindDialog();
   const asStudent = isStudentView() ? "&asStudent=1" : "";
   const data = await api(
     `/api/practice?studentId=${encodeURIComponent(student.id)}&bankId=${encodeURIComponent(bankId)}${asStudent}`
@@ -968,14 +1066,39 @@ els.templateSelect.addEventListener("change", () => {
   if (second) second.classList.toggle("hidden", student.template !== "twice");
   scheduleSave();
 });
-els.addRowBtn.addEventListener("click", () => {
-  const student = currentStudent();
-  if (!student || !isTeacherUi()) return;
-  hideRowConfirm();
-  student.rows.push(emptyRow());
-  scheduleSave();
-  renderTable();
-});
+if (els.findRowBtn) {
+  els.findRowBtn.addEventListener("click", () => {
+    if (!currentStudent()) {
+      setSaveStatus("Сначала откройте таблицу ученика.");
+      return;
+    }
+    showFindDialog();
+  });
+}
+if (els.findCancel) {
+  els.findCancel.addEventListener("click", hideFindDialog);
+}
+if (els.findDialog) {
+  els.findDialog.addEventListener("click", (event) => {
+    if (event.target === els.findDialog) hideFindDialog();
+  });
+}
+if (els.findForm) {
+  els.findForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const query = els.findDate ? els.findDate.value.trim() : "";
+    if (!query) {
+      if (els.findError) els.findError.textContent = "Введите дату, например 10.09.2026";
+      return;
+    }
+    const result = findLessonByDate(query);
+    if (!result.ok) {
+      if (els.findError) els.findError.textContent = result.error;
+      return;
+    }
+    hideFindDialog();
+  });
+}
 if (els.rowConfirmYes) {
   els.rowConfirmYes.addEventListener("click", () => {
     const index = state.pendingDeleteRow;
