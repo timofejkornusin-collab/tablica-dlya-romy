@@ -1,0 +1,82 @@
+.practice-scales {
+  margin: 0 0 20px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(33, 28, 25, 0.06);
+  border: 1px solid #ded4c2;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.practice-scale {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scale-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 0.92rem;
+}
+
+.scale-head span {
+  color: #7a7168;
+  font-weight: 600;
+}
+
+.scale-head strong {
+  color: #18334c;
+  font-weight: 700;
+  text-align: right;
+}
+
+.scale-track {
+  height: 12px;
+  background: #efe8dc;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.scale-fill {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 0;
+  transition: width 0.2s ease;
+}
+
+.scale-fill.progress-red {
+  background: #d94f3d;
+}
+
+.scale-fill.progress-yellow {
+  background: #d49335;
+}
+
+.scale-fill.progress-light {
+  background: #57ad79;
+}
+
+.scale-fill.progress-dark {
+  background: #236940;
+}
+
+.scale-fill.scale-accuracy {
+  background: #18334c;
+}
+
+.practice-scales .stats-hint {
+  font-size: 0.88rem;
+  margin: 0;
+  color: #7a7168;
+}
+
+@media (max-width: 980px) {
+  .practice-scales {
+    padding: 14px;
+  }
+}
