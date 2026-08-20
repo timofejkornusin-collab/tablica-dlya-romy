@@ -329,7 +329,11 @@ def public_practice(bank: dict, student: dict, role: str) -> dict:
         if role == "teacher":
             item["answer"] = str(task.get("answer") or "")
         if given and key:
-            item["status"] = "ok" if normalize_answer(given) == key else "bad"
+            if normalize_answer(given) == key:
+                item["status"] = "ok"
+            else:
+                item["status"] = "bad"
+                item["correctAnswer"] = str(task.get("answer") or "")
         elif given:
             item["status"] = "saved"
         tasks.append(item)

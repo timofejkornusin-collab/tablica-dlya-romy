@@ -1052,6 +1052,21 @@ textarea:focus {
   border-color: var(--gold);
 }
 
+.task-correct {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #edf7f0;
+  border: 1px solid #bce4ca;
+  color: #19522e;
+  font-weight: 600;
+}
+
+.task-correct strong {
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
 .key-input {
   min-width: 100px;
 }

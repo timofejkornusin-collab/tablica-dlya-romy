@@ -878,6 +878,11 @@ function renderPractice() {
             task.answer || ""
           )}" placeholder="например 245" /></label>`
         : "";
+      const correctAnswer = task.correctAnswer || "";
+      const correctReveal =
+        task.status === "bad" && correctAnswer
+          ? `<p class="task-correct">Правильный ответ: <strong>${escapeHtml(correctAnswer)}</strong></p>`
+          : "";
       return `
         <article class="task-card ${task.status || ""}" data-n="${task.n}">
           <div class="task-card-top">
@@ -894,6 +899,7 @@ function renderPractice() {
             ${keyField}
             ${isTeacherUi() ? `<button class="secondary-btn save-key" type="button" data-n="${task.n}">Сохранить ключ</button>` : ""}
           </div>
+          ${correctReveal}
         </article>
       `;
     })
