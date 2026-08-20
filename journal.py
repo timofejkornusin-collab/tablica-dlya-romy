@@ -256,7 +256,15 @@ def bank_stats(student: dict, bank_id: str) -> dict:
             if key and given == key:
                 correct += 1
     percent = int(round(100 * done / total)) if total else 0
-    return {"done": done, "total": total, "correct": correct, "percent": percent}
+    accuracy_percent = int(round(100 * correct / done)) if done else 0
+    return {
+        "done": done,
+        "total": total,
+        "correct": correct,
+        "percent": percent,
+        "donePercent": percent,
+        "accuracyPercent": accuracy_percent,
+    }
 
 
 def progress_color(percent: int) -> str:

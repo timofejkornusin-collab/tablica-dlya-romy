@@ -855,6 +855,17 @@ function renderPractice() {
   const data = state.practice;
   if (!data) return;
   const stats = data.stats || { done: 0, total: 0, percent: 0, correct: 0 };
+  const total = Number(stats.total) || 0;
+  const done = Number(stats.done) || 0;
+  const correct = Number(stats.correct) || 0;
+  const donePercent = Number(stats.donePercent);
+  const accuracyPercent = Number(stats.accuracyPercent);
+  const doneWidth = Number.isFinite(donePercent) ? donePercent : Number(stats.percent) || 0;
+  const accuracyWidth = Number.isFinite(accuracyPercent)
+    ? accuracyPercent
+    : done
+      ? Math.round(100 * correct / done)
+      : 0;
   const color = data.statsColor || "red";
   const tasks = (data.tasks || [])
     .map((task) => {
@@ -894,12 +905,26 @@ function renderPractice() {
         <button class="primary-btn practice-back" type="button">← К таблице</button>
         <h2>${escapeHtml(data.title || "Задания")}</h2>
       </div>
-      <div class="practice-stats progress-${color}">
-        <div class="stats-text">
-          <strong>Выполнено:</strong> ${stats.done} из ${stats.total} (${stats.percent}%).
-          ${stats.correct ? ` · <strong>Верно:</strong> ${stats.correct}.` : ""}
+      <div class="practice-scales">
+        <div class="practice-scale">
+          <div class="scale-head">
+            <span>Сделано</span>
+            <strong>${done} из ${total}</strong>
+          </div>
+          <div class="scale-track" aria-label="Сделано ${done} из ${total}">
+            <div class="scale-fill progress-${color}" style="width: ${Math.max(0, Math.min(100, doneWidth))}%"></div>
+          </div>
         </div>
-        <div class="stats-hint">Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.</div>
+        <div class="practice-scale">
+          <div class="scale-head">
+            <span>Верно</span>
+            <strong>${correct} из ${done}</strong>
+          </div>
+          <div class="scale-track" aria-label="Верно ${correct} из ${done}">
+            <div class="scale-fill scale-accuracy" style="width: ${Math.max(0, Math.min(100, accuracyWidth))}%"></div>
+          </div>
+        </div>
+        <p class="stats-hint">Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.</p>
       </div>
       <div class="task-list">${tasks}</div>
     </div>
