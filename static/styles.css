@@ -1067,6 +1067,23 @@ textarea:focus {
   letter-spacing: 0.03em;
 }
 
+.task-locked {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f4efe6;
+  border: 1px solid #ded4c2;
+  color: #5c564e;
+  font-weight: 600;
+}
+
+.task-card.locked input[data-role="given"],
+.task-card input[data-role="given"][readonly] {
+  background: #f7f3ea;
+  color: #3d3832;
+  cursor: default;
+}
+
 .key-input {
   min-width: 100px;
 }

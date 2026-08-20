@@ -1170,6 +1170,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not student:
                 self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
                 return
+            if user["role"] == "student" and journal.has_task_answer(student, bank_id, number):
+                self._send_json({"ok": False, "error": "Ответ уже сохранён. Изменить его нельзя."}, 409)
+                return
             stats = journal.set_task_answer(student, bank_id, number, str(payload.get("answer") or ""))
             save_data(data)
         self._send_json({"ok": True, "stats": stats, "statsColor": journal.progress_color(stats["percent"])})

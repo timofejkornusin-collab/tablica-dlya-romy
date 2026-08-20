@@ -336,6 +336,7 @@ def public_practice(bank: dict, student: dict, role: str) -> dict:
                 item["correctAnswer"] = str(task.get("answer") or "")
         elif given:
             item["status"] = "saved"
+        item["locked"] = bool(given) and role != "teacher"
         tasks.append(item)
     stats = bank_stats(student, bank["id"])
     return {
@@ -346,6 +347,13 @@ def public_practice(bank: dict, student: dict, role: str) -> dict:
         "stats": stats,
         "statsColor": progress_color(stats["percent"]),
     }
+
+
+def has_task_answer(student: dict, bank_id: str, number: int) -> bool:
+    answers = ((student.get("progress") or {}).get(bank_id) or {}) if isinstance(student.get("progress"), dict) else {}
+    if not isinstance(answers, dict):
+        return False
+    return bool(str(answers.get(str(number), "") or "").strip())
 
 
 def set_task_answer(student: dict, bank_id: str, number: int, answer: str) -> dict:

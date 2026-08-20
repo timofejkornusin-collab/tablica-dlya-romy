@@ -883,8 +883,12 @@ function renderPractice() {
         task.status === "bad" && correctAnswer
           ? `<p class="task-correct">Правильный ответ: <strong>${escapeHtml(correctAnswer)}</strong></p>`
           : "";
+      const locked = Boolean(task.locked) || (!isTeacherUi() && Boolean(String(task.given || "").trim()));
+      const saveControl = locked
+        ? `<p class="task-locked">Ответ сохранён. Изменить его нельзя.</p>`
+        : `<button class="primary-btn save-answer" type="button" data-n="${task.n}">Сохранить</button>`;
       return `
-        <article class="task-card ${task.status || ""}" data-n="${task.n}">
+        <article class="task-card ${task.status || ""} ${locked ? "locked" : ""}" data-n="${task.n}">
           <div class="task-card-top">
             <span class="task-badge">№ ${task.n}</span>
             <span class="task-tag">Задание ЕГЭ</span>
@@ -893,9 +897,9 @@ function renderPractice() {
           ${options}
           <div class="task-actions">
             <label class="task-field-label">Ответ ученика
-              <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="245 или 2, 4, 5" />
+              <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="245 или 2, 4, 5" ${locked ? "readonly" : ""} />
             </label>
-            <button class="primary-btn save-answer" type="button" data-n="${task.n}">Сохранить</button>
+            ${saveControl}
             ${keyField}
             ${isTeacherUi() ? `<button class="secondary-btn save-key" type="button" data-n="${task.n}">Сохранить ключ</button>` : ""}
           </div>
@@ -1376,6 +1380,13 @@ els.practiceView.addEventListener("click", async (event) => {
   if (!student || !practice) return;
   const n = Number(event.target.dataset.n);
   if (event.target.closest(".save-answer")) {
+    if (!isTeacherUi()) {
+      const task = (practice.tasks || []).find((item) => Number(item.n) === n);
+      if (task && String(task.given || "").trim()) {
+        alert("Ответ уже сохранён. Изменить его нельзя.");
+        return;
+      }
+    }
     const input = els.practiceView.querySelector(`input[data-role='given'][data-n='${n}']`);
     try {
       const data = await api("/api/progress", {
