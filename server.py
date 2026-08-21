@@ -977,6 +977,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "name": name,
                 "login": login,
                 "template": template,
+                "format": journal.normalize_format(payload.get("format")),
                 "rows": [journal.empty_row() for _ in range(5)],
                 "progress": {},
                 "password_salt": salt,
@@ -1083,6 +1084,8 @@ class Handler(SimpleHTTPRequestHandler):
             student["rows"] = new_rows
             if user["role"] == "teacher" and payload.get("template") in ("once", "twice"):
                 student["template"] = payload["template"]
+            if user["role"] == "teacher" and payload.get("format") in journal.FORMATS:
+                student["format"] = payload["format"]
             save_data(data)
             saved = public_student(student)
         self._send_json({"ok": True, "student": saved})
@@ -1114,6 +1117,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
                 return
             student["template"] = template
+            if payload.get("format") in journal.FORMATS:
+                student["format"] = payload["format"]
             name = str(payload.get("name") or "").strip()
             if name:
                 student["name"] = name

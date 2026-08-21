@@ -23,6 +23,17 @@ const TEMPLATE_LABELS = {
   twice: "2 раза в неделю",
 };
 
+const FORMAT_LABELS = {
+  solo: "Один ученик",
+  mini: "Минигруппа",
+  group: "Группа",
+};
+
+function studentFormat(student) {
+  const value = student && student.format;
+  return FORMAT_LABELS[value] ? value : "solo";
+}
+
 const state = {
   students: [],
   banks: [],
@@ -469,13 +480,15 @@ function showCreatedAccess(name, login, password, lead) {
 
 function collectCreateSlots() {
   const template = els.studentForm.template.value === "twice" ? "twice" : "once";
+  const formatInput = els.studentForm.querySelector("input[name='format']:checked");
+  const format = studentFormat({ format: formatInput ? formatInput.value : "solo" });
   const slots = [
     { weekday: Number(els.weekday0.value), time: els.time0.value || "16:00" },
   ];
   if (template === "twice") {
     slots.push({ weekday: Number(els.weekday1.value), time: els.time1.value || "16:00" });
   }
-  return { template, slots, startDate: els.startDate.value };
+  return { template, format, slots, startDate: els.startDate.value };
 }
 
 async function persistCurrent() {
@@ -489,6 +502,7 @@ async function persistCurrent() {
         id: student.id,
         rows: student.rows,
         template: student.template,
+        format: studentFormat(student),
       }),
     });
     setSaveStatus("Сохранено");
@@ -519,6 +533,9 @@ function fillStudentForm(student) {
   const slots = Array.isArray(schedule.slots) ? schedule.slots : [];
   els.studentName.value = student ? student.name : "";
   els.studentForm.template.value = student && student.template === "twice" ? "twice" : "once";
+  const format = studentFormat(student);
+  const formatRadio = els.studentForm.querySelector(`input[name='format'][value='${format}']`);
+  if (formatRadio) formatRadio.checked = true;
   els.startDate.value = schedule.startDate || "2026-09-03";
   els.weekday0.value = String(slots[0] ? slots[0].weekday : 3);
   els.time0.value = (slots[0] && slots[0].time) || "16:00";
@@ -617,6 +634,7 @@ function renderList() {
             <div class="avatar">${escapeHtml(initial(student.name))}</div>
             <div>
               <h2>${escapeHtml(student.name)}</h2>
+              <span class="badge">${escapeHtml(FORMAT_LABELS[studentFormat(student)])}</span>
               <span class="badge">${TEMPLATE_LABELS[student.template] || TEMPLATE_LABELS.once}</span>
               ${student.login ? `<p class="card-login">логин: ${escapeHtml(student.login)}</p>` : ""}
             </div>
@@ -1184,7 +1202,7 @@ els.studentForm.addEventListener("submit", async (event) => {
     els.modalError.textContent = "Нужно имя ученика";
     return;
   }
-  const { template, slots, startDate } = collectCreateSlots();
+  const { template, format, slots, startDate } = collectCreateSlots();
   try {
     if (state.settingsStudentId) {
       const data = await api("/api/schedule", {
@@ -1193,6 +1211,7 @@ els.studentForm.addEventListener("submit", async (event) => {
           id: state.settingsStudentId,
           name,
           template,
+          format,
           startDate,
           slots,
           regenerate: true,
@@ -1207,7 +1226,7 @@ els.studentForm.addEventListener("submit", async (event) => {
     }
     const data = await api("/api/students", {
       method: "POST",
-      body: JSON.stringify({ name, template, startDate, slots }),
+      body: JSON.stringify({ name, template, format, startDate, slots }),
     });
     state.students.push(data.student);
     state.currentId = data.student.id;

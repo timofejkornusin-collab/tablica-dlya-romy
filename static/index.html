@@ -101,6 +101,23 @@
               <input id="student-name" type="text" name="name" required maxlength="80" placeholder="Например, Рома" autocomplete="off" />
             </label>
             <fieldset>
+              <legend>Формат</legend>
+              <div class="format-cards">
+                <label class="format-card">
+                  <input type="radio" name="format" value="solo" checked />
+                  <span>Один ученик</span>
+                </label>
+                <label class="format-card">
+                  <input type="radio" name="format" value="mini" />
+                  <span>Минигруппа</span>
+                </label>
+                <label class="format-card">
+                  <input type="radio" name="format" value="group" />
+                  <span>Группа</span>
+                </label>
+              </div>
+            </fieldset>
+            <fieldset>
               <legend>Как часто занимаемся</legend>
               <label class="radio">
                 <input type="radio" name="template" value="once" checked />
@@ -207,7 +224,7 @@
       </form>
     </div>
 
-    <script src="app.js?v=lock-answer1"></script>
+    <script src="app.js?v=format-cards1"></script>
     <script src="find-date.js?v=2"></script>
     <script src="practice-page.js?v=1"></script>
     <script src="practice-scales.js?v=1"></script>

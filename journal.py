@@ -21,6 +21,7 @@ FILE_KEYS = (
     "practiceFileId",
     "practiceFileName",
 )
+FORMATS = ("solo", "mini", "group")
 WEEKDAY_NAMES = (
     "понедельник",
     "вторник",
@@ -30,6 +31,11 @@ WEEKDAY_NAMES = (
     "суббота",
     "воскресенье",
 )
+
+
+def normalize_format(value: str | None) -> str:
+    raw = str(value or "").strip().lower()
+    return raw if raw in FORMATS else "solo"
 
 
 def empty_row(date_str: str = "") -> dict:
@@ -305,6 +311,7 @@ def public_student(student: dict | None) -> dict | None:
         "id": student.get("id"),
         "name": student.get("name") or "",
         "template": "twice" if student.get("template") == "twice" else "once",
+        "format": normalize_format(student.get("format")),
         "login": student.get("login") or "",
         "password_is_initial": bool(student.get("password_is_initial")),
         "rows": rows,

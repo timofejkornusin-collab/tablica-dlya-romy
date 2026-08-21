@@ -361,6 +361,7 @@ body.student-preview {
 .badge {
   display: inline-block;
   margin-top: 4px;
+  margin-right: 6px;
   background: var(--gold-soft);
   color: var(--navy);
   border: 1px solid #ebd3a7;
@@ -1178,6 +1179,45 @@ legend {
   font-weight: 500;
 }
 
+.format-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.format-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 14px 10px;
+  min-height: 64px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--navy);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.format-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.format-card:has(input:checked) {
+  border-color: var(--navy);
+  background: var(--navy-soft);
+  box-shadow: inset 0 0 0 1px var(--navy);
+}
+
+.format-card span {
+  line-height: 1.25;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1743,6 +1783,12 @@ textarea[readonly] {
 
   .card-actions {
     grid-template-columns: 1fr;
+  }
+
+  .format-card {
+    font-size: 0.82rem;
+    padding: 12px 6px;
+    min-height: 56px;
   }
 
   .card-actions .primary-btn {
