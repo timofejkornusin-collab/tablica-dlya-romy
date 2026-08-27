@@ -999,12 +999,18 @@ textarea:focus {
   line-height: 1.5;
   color: var(--ink);
   margin: 0 0 12px;
+  white-space: pre-wrap;
 }
 
 .task-options {
   margin: 10px 0 16px;
   padding-left: 24px;
   line-height: 1.6;
+}
+
+ul.task-options.task-phrases {
+  list-style: none;
+  padding-left: 0;
 }
 
 .task-options li {

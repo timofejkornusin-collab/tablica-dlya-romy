@@ -19,31 +19,78 @@ EGE_PROMPT = (
 
 MAX_PDF_BYTES = 20 * 1024 * 1024
 TASK_VERBS = (
-    "Укажите",
-    "Выберите",
-    "Прочитайте",
-    "Определите",
-    "Найдите",
-    "Установите",
-    "Вставьте",
-    "Исправьте",
+    "Отредактируйте",
+    "тредактируйте",
     "Сопоставьте",
+    "опоставьте",
+    "Прочитайте",
+    "рочитайте",
+    "Определите",
+    "пределите",
+    "Расставьте",
+    "асставьте",
+    "Установите",
+    "становите",
+    "Исправьте",
+    "справьте",
+    "Выпишите",
+    "ыпишите",
+    "Укажите",
+    "кажите",
+    "Выберите",
+    "ыберите",
+    "Найдите",
+    "айдите",
+    "Вставьте",
+    "ставьте",
     "Запишите",
+    "апишите",
+    "Замените",
+    "амените",
+    "В одном",
+    "одном",
     "Укажи",
+    "кажи",
     "Выбери",
+    "ыбери",
     "Прочитай",
+    "рочитай",
 )
 TASK_START = re.compile(
-    r"(?m)^(?:№\s*)?(\d{1,3})\.\s*(?=(?:%s))" % "|".join(TASK_VERBS)
+    r"(?m)^(?:№\s*)?(\d{1,3})(?:\.\s*|\s+)(?=(?:%s))"
+    % "|".join(sorted((re.escape(verb) for verb in TASK_VERBS), key=len, reverse=True))
 )
 LOOSE_START = re.compile(r"(?m)^(?:№\s*)?(\d{1,3})[.)]\s+(?=[А-ЯЁA-Z])")
 OPTION_BLOCK = re.compile(r"(?ms)^\s*([1-5])[.)]\s*(.*?)(?=^\s*[1-5][.)]\s*|\Z)")
 ANSWER_LINE = re.compile(r"Ответ:\s*([1-5]{1,5})\b", re.I)
-BLANK_ANSWER = re.compile(r"Ответ:\s*_+\.?", re.I)
+BLANK_ANSWER = re.compile(r"Ответ\s*:?\s*[_\-–—.]{3,}\.?", re.I)
 EGE_BOILERPLATE = re.compile(
     r"варианты ответов, в которых во всех словах одного ряда пропущена одна и та же буква\.\s*"
     r"Запишите номера ответов\.\s*Ответ:\s*_+\.?\s*",
     re.I,
+)
+KEY_HEADING = re.compile(
+    r"^(?:ключи ответов|ключ ответов|ответы к заданиям)\b.*$|^ответы\s*:?\s*$",
+    re.I | re.M,
+)
+CAPS_WORD = re.compile(r"(?<![А-ЯЁа-яёA-Za-z])[А-ЯЁ]{3,}(?![А-ЯЁа-яёA-Za-z])")
+SENTENCE_NUM = re.compile(r"(?<!\n)(\(\d+\)(?=[А-ЯЁA-Z«\"]))")
+TRAILING_TASK_NUM = re.compile(r"(?:\s+\d{1,3}\.?|\s*\d{1,3}\.)\s*$")
+WORD_HINTS = (
+    "запишите слово",
+    "запишите это слово",
+    "грамматическая ошибка",
+    "исправьте ошибку",
+    "лексическ",
+    "отредактируйте",
+)
+NUMBER_HINTS = (
+    "запишите номера",
+    "номера ответов",
+    "номера этих",
+    "цифру",
+    "цифры",
+    "цифр",
 )
 
 
@@ -124,7 +171,7 @@ def parse_tasks(text: str) -> list[dict]:
 
 def _split_tasks(text: str) -> list[tuple[int, str]]:
     found = _chunks_from_matches(text, list(TASK_START.finditer(text)))
-    if len(found) >= 2:
+    if found:
         return found
     loose = []
     for number, body in _chunks_from_matches(text, list(LOOSE_START.finditer(text))):
@@ -157,20 +204,34 @@ def _unique_tasks(items: list[tuple[int, str]]) -> list[tuple[int, str]]:
     return unique
 
 
+def _squash(text: str) -> str:
+    return " ".join((text or "").split())
+
+
 def _make_task(number: int, body: str) -> dict | None:
     answer = _take_inline_answer(body)
-    options = _options_1_to_5(EGE_BOILERPLATE.sub("\n", body))
+    options = _options_1_to_5(body)
+    kind = ""
+    if not options:
+        phrases = _phrase_options(body)
+        if phrases:
+            options = phrases
+            kind = "phrases"
     prompt = _task_prompt(body, options)
     if not prompt and not any(options):
         return None
-    return {"n": number, "prompt": prompt, "options": options, "answer": answer}
+    if not kind and _looks_word_prompt(prompt) and not any(options):
+        kind = "word"
+    task = {"n": number, "prompt": prompt, "options": options, "answer": answer}
+    if kind:
+        task["kind"] = kind
+    return task
 
 
 def _options_1_to_5(body: str) -> list[str]:
     by_num: dict[int, str] = {}
     for num, raw in OPTION_BLOCK.findall(body):
-        line = " ".join(raw.split())
-        line = BLANK_ANSWER.sub("", line).strip()
+        line = _squash(BLANK_ANSWER.sub("", raw))
         if line:
             by_num[int(num)] = line[:500]
     if len(by_num) < 3:
@@ -178,18 +239,63 @@ def _options_1_to_5(body: str) -> list[str]:
     return [by_num.get(idx, "") for idx in range(1, 6)]
 
 
-def _task_prompt(body: str, options: list[str]) -> str:
-    if "пропущена одна и та же буква" in body.lower():
-        return EGE_PROMPT
-    text = EGE_BOILERPLATE.sub(" ", body)
+def _phrase_options(body: str) -> list[str]:
+    found = []
+    for raw in (body or "").splitlines():
+        line = BLANK_ANSWER.sub("", raw).strip()
+        if not line or re.match(r"^\d{1,3}[.)]\s", line):
+            continue
+        if CAPS_WORD.search(line):
+            found.append(_squash(line)[:500])
+    if 4 <= len(found) <= 8:
+        return found
+    return []
+
+
+def _looks_word_prompt(prompt: str) -> bool:
+    text = (prompt or "").lower()
+    if any(hint in text for hint in NUMBER_HINTS):
+        return False
+    return any(hint in text for hint in WORD_HINTS)
+
+
+def _cut_at_options(text: str, options: list[str]) -> str:
+    compact = _squash(text)
+    for option in options:
+        if not option:
+            continue
+        option_c = _squash(option)
+        index = compact.find(option_c)
+        if index != -1:
+            return compact[:index]
+        index = text.find(option)
+        if index != -1:
+            return text[:index]
+    return text
+
+
+def _strip_prompt_tail(text: str, strip_number: bool) -> str:
     text = BLANK_ANSWER.sub(" ", text)
+    text = re.sub(r"\bОтвет\b\s*:?\s*$", "", text, flags=re.I)
+    if strip_number:
+        text = TRAILING_TASK_NUM.sub("", text)
+    return text.strip(" .")
+
+
+def _task_prompt(body: str, options: list[str]) -> str:
+    text = BLANK_ANSWER.sub(" ", body or "")
     if options:
-        for option in options:
-            if option and option in text:
-                text = text.split(option)[0]
-                break
-    text = " ".join(text.split()).strip(" .")
-    return (text[:800] or EGE_PROMPT).strip()
+        text = _cut_at_options(text, options)
+        text = _strip_prompt_tail(_squash(text), strip_number=True)
+        return (text[:800] or EGE_PROMPT).strip()
+    text = SENTENCE_NUM.sub(r"\n\1", text)
+    lines = []
+    for line in text.splitlines():
+        piece = _squash(line)
+        if piece:
+            lines.append(piece)
+    text = _strip_prompt_tail("\n".join(lines), strip_number=False)
+    return text[:4000].strip()
 
 
 def _take_inline_answer(body: str) -> str:
@@ -200,7 +306,7 @@ def _take_inline_answer(body: str) -> str:
 
 
 def _apply_answer_section(text: str, tasks: list[dict]) -> None:
-    match = re.search(r"(?im)^(?:ответы|ключи|ключ ответов)\b.*$", text)
+    match = KEY_HEADING.search(text)
     if not match:
         return
     section = text[match.end() :]

@@ -1370,7 +1370,7 @@ class Handler(SimpleHTTPRequestHandler):
         parsed_bank = None
         import_error = ""
         imported_total = 0
-        if field in ("homework", "practice") and suffix == ".pdf":
+        if field == "practice" and suffix == ".pdf":
             try:
                 parsed_bank = pdf_import.import_pdf_bytes(
                     uploaded["data"], original, journal.pdf_bank_id(uploaded["data"])

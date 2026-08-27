@@ -235,8 +235,38 @@ def bank_used(data: dict, bank_id: str) -> bool:
     return False
 
 
-def normalize_answer(raw: str) -> str:
-    digits = re.sub(r"[^1-5]", "", str(raw or ""))
+def is_word_task(task: dict | None) -> bool:
+    if not isinstance(task, dict):
+        return False
+    kind = str(task.get("kind") or "")
+    if kind in {"phrases", "word"}:
+        return True
+    if kind in {"match", "choice"}:
+        return False
+    options = [item for item in (task.get("options") or []) if str(item).strip()]
+    if len(options) >= 3:
+        return False
+    prompt = str(task.get("prompt") or "").lower()
+    if any(hint in prompt for hint in ("запишите номера", "номера ответов", "номера этих", "цифру", "цифры", "цифр")):
+        return False
+    return any(
+        hint in prompt
+        for hint in (
+            "запишите слово",
+            "запишите это слово",
+            "грамматическая ошибка",
+            "исправьте ошибку",
+            "лексическ",
+            "отредактируйте",
+        )
+    )
+
+
+def normalize_answer(raw: str, word: bool = False) -> str:
+    text = str(raw or "").strip()
+    if word:
+        return re.sub(r"\s+", "", text).casefold()
+    digits = re.sub(r"[^1-5]", "", text)
     return "".join(sorted(set(digits)))
 
 
@@ -248,11 +278,12 @@ def bank_stats(student: dict, bank_id: str) -> dict:
     correct = 0
     if bank:
         for task in bank["tasks"]:
-            given = normalize_answer(str(answers.get(str(task.get("n")), "") or ""))
+            word = is_word_task(task)
+            given = normalize_answer(str(answers.get(str(task.get("n")), "") or ""), word=word)
             if not given:
                 continue
             done += 1
-            key = normalize_answer(str(task.get("answer") or ""))
+            key = normalize_answer(str(task.get("answer") or ""), word=word)
             if key and given == key:
                 correct += 1
     percent = int(round(100 * done / total)) if total else 0
@@ -318,18 +349,21 @@ def public_practice(bank: dict, student: dict, role: str) -> dict:
     for task in bank.get("tasks") or []:
         number = task.get("n")
         given = str(answers.get(str(number), "") or "")
-        key = normalize_answer(str(task.get("answer") or ""))
+        word = is_word_task(task)
+        key = normalize_answer(str(task.get("answer") or ""), word=word)
         item = {
             "n": number,
             "prompt": task.get("prompt") or bank.get("instruction") or "",
             "options": task.get("options") or [],
+            "kind": str(task.get("kind") or ""),
+            "word": word,
             "given": given,
             "status": "empty",
         }
         if role == "teacher":
             item["answer"] = str(task.get("answer") or "")
         if given and key:
-            if normalize_answer(given) == key:
+            if normalize_answer(given, word=word) == key:
                 item["status"] = "ok"
             else:
                 item["status"] = "bad"
@@ -380,7 +414,13 @@ def set_bank_key(bank_id: str, number: int, answer: str) -> bool:
     found = False
     for task in bank["tasks"]:
         if int(task.get("n") or 0) == number:
-            task["answer"] = normalize_answer(answer) if str(answer).strip() else ""
+            raw = str(answer or "").strip()
+            if not raw:
+                task["answer"] = ""
+            elif is_word_task(task):
+                task["answer"] = raw
+            else:
+                task["answer"] = normalize_answer(raw)
             found = True
             break
     if found:

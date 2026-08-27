@@ -500,12 +500,7 @@ async function persistCurrent() {
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    persistCurrent()
-      .then(() => importHomeworkPdfs(currentStudent()))
-      .then((changed) => {
-        if (changed && state.view === "table") renderTable();
-      })
-      .catch((error) => setSaveStatus(friendlyNetworkError(error).message));
+    persistCurrent().catch((error) => setSaveStatus(friendlyNetworkError(error).message));
   }, 1200);
 }
 
@@ -867,16 +862,29 @@ function renderPractice() {
       ? Math.round(100 * correct / done)
       : 0;
   const color = data.statsColor || "red";
+  const wordBank =
+    (data.tasks || []).length > 0 &&
+    (data.tasks || []).every((task) => task.kind === "phrases" || task.kind === "word" || task.word);
+  const statsHint = wordBank
+    ? "Запишите слово, как в бланке ЕГЭ."
+    : "Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.";
   const tasks = (data.tasks || [])
     .map((task) => {
       const optionItems = (task.options || []).filter(Boolean);
+      const isPhrases = task.kind === "phrases";
+      const isWord = Boolean(task.word) || task.kind === "word" || isPhrases;
+      const listTag = isPhrases ? "ul" : "ol";
       const options = optionItems.length
-        ? `<ol class="task-options">${optionItems.map((option) => `<li>${escapeHtml(option)}</li>`).join("")}</ol>`
+        ? `<${listTag} class="task-options${isPhrases ? " task-phrases" : ""}">${optionItems
+            .map((option) => `<li>${escapeHtml(option)}</li>`)
+            .join("")}</${listTag}>`
         : "";
+      const answerPlaceholder = isWord ? "слово" : "245 или 2, 4, 5";
+      const keyPlaceholder = isWord ? "например слово" : "например 245";
       const keyField = isTeacherUi()
         ? `<label class="task-field-label">Ключ <input class="key-input" data-n="${task.n}" data-role="key" value="${escapeHtml(
             task.answer || ""
-          )}" placeholder="например 245" /></label>`
+          )}" placeholder="${keyPlaceholder}" /></label>`
         : "";
       const correctAnswer = task.correctAnswer || "";
       const correctReveal =
@@ -897,7 +905,7 @@ function renderPractice() {
           ${options}
           <div class="task-actions">
             <label class="task-field-label">Ответ ученика
-              <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="245 или 2, 4, 5" ${locked ? "readonly" : ""} />
+              <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="${answerPlaceholder}" ${locked ? "readonly" : ""} />
             </label>
             ${saveControl}
             ${keyField}
@@ -934,7 +942,7 @@ function renderPractice() {
             <div class="scale-fill scale-accuracy" style="width: ${Math.max(0, Math.min(100, accuracyWidth))}%"></div>
           </div>
         </div>
-        <p class="stats-hint">Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.</p>
+        <p class="stats-hint">${statsHint}</p>
       </div>
       <div class="task-list">${tasks}</div>
     </div>
