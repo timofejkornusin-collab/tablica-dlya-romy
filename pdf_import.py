@@ -335,18 +335,21 @@ def _strip_prompt_tail(text: str, strip_number: bool) -> str:
 
 
 def _format_passage(text: str) -> str:
+    text = text or ""
     text = re.sub(
-        r"^(.*\S)[ \t]*(\(\d+\)(?=[А-ЯЁA-Z«\"]))",
+        r"(\S)[ \t]*\n+[ \t]*(\(\d+\)(?=[А-ЯЁA-Z«\"]))",
         r"\1\n\n\2",
-        text or "",
+        text,
         count=1,
     )
-    lines = []
-    for line in text.splitlines():
-        piece = _squash(line)
-        if piece:
-            lines.append(piece)
-    return "\n".join(lines).strip()
+    text = re.sub(
+        r"(\S)[ \t]+(\(\d+\)(?=[А-ЯЁA-Z«\"]))",
+        r"\1\n\n\2",
+        text,
+        count=1,
+    )
+    parts = [_squash(part) for part in re.split(r"\n\s*\n", text)]
+    return "\n\n".join(part for part in parts if part).strip()
 
 
 def _task_prompt(body: str, options: list[str]) -> str:

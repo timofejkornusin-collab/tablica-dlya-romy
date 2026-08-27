@@ -1002,14 +1002,20 @@ textarea:focus {
   white-space: pre-wrap;
 }
 
-.task-options {
-  margin: 1.35em 0 16px;
-  padding-left: 24px;
-  line-height: 1.6;
+.task-gap {
+  display: block;
+  height: 2.6em;
+  margin: 0.35em 0;
+  padding: 0;
+  border: 0;
+  line-height: 2.6em;
+  color: transparent;
 }
 
-.task-prompt + .task-options {
-  margin-top: 1.45em;
+.task-options {
+  margin: 0.15em 0 16px;
+  padding-left: 24px;
+  line-height: 1.6;
 }
 
 ul.task-options.task-phrases {

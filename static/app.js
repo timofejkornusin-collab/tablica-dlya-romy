@@ -901,8 +901,8 @@ function renderPractice() {
             <span class="task-badge">№ ${task.n}</span>
             <span class="task-tag">Задание ЕГЭ</span>
           </div>
-          <p class="task-prompt">${formatTaskPrompt(task.prompt || data.instruction || "")}</p>
-          ${options}
+          ${renderTaskPrompt(task.prompt || data.instruction || "")}
+          ${options ? `<p class="task-gap">&nbsp;</p>${options}` : ""}
           <div class="task-actions">
             <label class="task-field-label">Ответ ученика
               <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="${answerPlaceholder}" ${locked ? "readonly" : ""} />
@@ -969,7 +969,16 @@ function formatTaskPrompt(text) {
     "$1\n\n"
   );
   raw = raw.replace(/\n{3,}/g, "\n\n");
-  return escapeHtml(raw);
+  return raw;
+}
+
+function renderTaskPrompt(text) {
+  const raw = formatTaskPrompt(text).trim();
+  const parts = raw.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  const blocks = (parts.length ? parts : [raw]).map(
+    (part) => `<p class="task-prompt">${escapeHtml(part).replaceAll("\n", "<br>")}</p>`
+  );
+  return blocks.join('<p class="task-gap">&nbsp;</p>');
 }
 
 function linkifyText(text) {
