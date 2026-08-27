@@ -853,14 +853,7 @@ function renderPractice() {
   const total = Number(stats.total) || 0;
   const done = Number(stats.done) || 0;
   const correct = Number(stats.correct) || 0;
-  const donePercent = Number(stats.donePercent);
-  const accuracyPercent = Number(stats.accuracyPercent);
-  const doneWidth = Number.isFinite(donePercent) ? donePercent : Number(stats.percent) || 0;
-  const accuracyWidth = Number.isFinite(accuracyPercent)
-    ? accuracyPercent
-    : done
-      ? Math.round(100 * correct / done)
-      : 0;
+  const percent = total ? Math.round((100 * correct) / total) : Number(stats.percent) || 0;
   const color = data.statsColor || "red";
   const wordBank =
     (data.tasks || []).length > 0 &&
@@ -924,26 +917,9 @@ function renderPractice() {
         <button class="primary-btn practice-back" type="button">← К таблице</button>
         <h2>${escapeHtml(data.title || "Задания")}</h2>
       </div>
-      <div class="practice-scales">
-        <div class="practice-scale">
-          <div class="scale-head">
-            <span>Сделано</span>
-            <strong>${done} из ${total}</strong>
-          </div>
-          <div class="scale-track" aria-label="Сделано ${done} из ${total}">
-            <div class="scale-fill progress-${color}" style="width: ${Math.max(0, Math.min(100, doneWidth))}%"></div>
-          </div>
-        </div>
-        <div class="practice-scale">
-          <div class="scale-head">
-            <span>Верно</span>
-            <strong>${correct} из ${done}</strong>
-          </div>
-          <div class="scale-track" aria-label="Верно ${correct} из ${done}">
-            <div class="scale-fill scale-accuracy" style="width: ${Math.max(0, Math.min(100, accuracyWidth))}%"></div>
-          </div>
-        </div>
-        <p class="stats-hint">${statsHint}</p>
+      <div class="practice-summary progress-${escapeHtml(color)}">
+        <div class="stats-text">Выполнено: ${done} из ${total}. Верно: ${correct} из ${total} (${percent}%).</div>
+        <div class="stats-hint">${escapeHtml(statsHint)}</div>
       </div>
       <div class="task-list">${tasks}</div>
     </div>
