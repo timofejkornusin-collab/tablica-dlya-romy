@@ -998,14 +998,18 @@ textarea:focus {
   font-size: 1.02rem;
   line-height: 1.5;
   color: var(--ink);
-  margin: 0 0 12px;
+  margin: 0;
   white-space: pre-wrap;
 }
 
 .task-options {
-  margin: 10px 0 16px;
+  margin: 1.35em 0 16px;
   padding-left: 24px;
   line-height: 1.6;
+}
+
+.task-prompt + .task-options {
+  margin-top: 1.45em;
 }
 
 ul.task-options.task-phrases {

@@ -901,7 +901,7 @@ function renderPractice() {
             <span class="task-badge">№ ${task.n}</span>
             <span class="task-tag">Задание ЕГЭ</span>
           </div>
-          <p class="task-prompt">${escapeHtml(task.prompt || data.instruction || "")}</p>
+          <p class="task-prompt">${formatTaskPrompt(task.prompt || data.instruction || "")}</p>
           ${options}
           <div class="task-actions">
             <label class="task-field-label">Ответ ученика
@@ -960,6 +960,16 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function formatTaskPrompt(text) {
+  let raw = String(text || "").replace(/\r/g, "");
+  raw = raw.replace(
+    /(Запишите номера этих предложений\.?|Запишите номера ответов\.?|запишите слово правильно\.?|Запишите это слово\.?)\s*(?=(?:[1-5][.)]|\(\d+\)[А-ЯЁA-Z«"]|\S))/gi,
+    "$1\n\n"
+  );
+  raw = raw.replace(/\n{3,}/g, "\n\n");
+  return escapeHtml(raw);
 }
 
 function linkifyText(text) {

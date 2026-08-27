@@ -57,8 +57,9 @@ TASK_VERBS = (
     "рочитай",
 )
 TASK_START = re.compile(
-    r"(?m)^(?:№\s*)?(\d{1,3})(?:\.\s*|\s+)(?=(?:%s))"
-    % "|".join(sorted((re.escape(verb) for verb in TASK_VERBS), key=len, reverse=True))
+    r"(?:^|(?<=[\s.]))(?:№\s*)?(\d{1,3})(?:\.\s*|\s+)(?=(?:%s))"
+    % "|".join(sorted((re.escape(verb) for verb in TASK_VERBS), key=len, reverse=True)),
+    re.M,
 )
 LOOSE_START = re.compile(r"(?m)^(?:№\s*)?(\d{1,3})[.)]\s+(?=[А-ЯЁA-Z])")
 OPTION_BLOCK = re.compile(r"(?ms)^\s*([1-5])[.)]\s*(.*?)(?=^\s*[1-5][.)]\s*|\Z)")
@@ -74,8 +75,21 @@ KEY_HEADING = re.compile(
     re.I | re.M,
 )
 CAPS_WORD = re.compile(r"(?<![А-ЯЁа-яёA-Za-z])[А-ЯЁ]{3,}(?![А-ЯЁа-яёA-Za-z])")
-SENTENCE_NUM = re.compile(r"(?<!\n)(\(\d+\)(?=[А-ЯЁA-Z«\"]))")
 TRAILING_TASK_NUM = re.compile(r"(?:\s+\d{1,3}\.?|\s*\d{1,3}\.)\s*$")
+OPTION_LIST_START = re.compile(r"(?:(?<=^)|(?<=[\s.]))1[.)][ \t]*\S")
+INLINE_OPTION = re.compile(
+    r"(?:(?<=^)|(?<=[\s.]))([1-5])[.)][ \t]+(\S.*?)(?=(?:[\s.]+)[1-5][.)][ \t]+|\s*\Z)",
+    re.S,
+)
+INSTRUCTION_END = re.compile(
+    r"(?is)("
+    r"Запишите номера этих предложений|"
+    r"Запишите номера ответов|"
+    r"запишите слово правильно|"
+    r"Запишите это слово|"
+    r"на месте которой.{0,24}пишется.{0,48}?"
+    r")\.?"
+)
 WORD_HINTS = (
     "запишите слово",
     "запишите это слово",
@@ -156,6 +170,18 @@ def _clean_extracted(text: str) -> str:
     text = text.replace("\u00ad", "")
     text = re.sub(r"\s*—\s*\d+\s+of\s+\d+\s*—", "\n", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(
+        r"(Ответ\s*:?\s*[_\-–—.]{3,}\.?)\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«\"])",
+        r"\1\n",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r"((?:Запишите номера ответов|Запишите номера этих предложений|запишите слово правильно|Запишите это слово)\.)\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«\"])",
+        r"\1\n\n",
+        text,
+        flags=re.I,
+    )
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -235,6 +261,12 @@ def _options_1_to_5(body: str) -> list[str]:
         if line:
             by_num[int(num)] = line[:500]
     if len(by_num) < 3:
+        by_num = {}
+        for num, raw in INLINE_OPTION.findall(body):
+            line = _squash(BLANK_ANSWER.sub("", raw))
+            if line and int(num) not in by_num:
+                by_num[int(num)] = line[:500]
+    if len(by_num) < 3:
         return []
     return [by_num.get(idx, "") for idx in range(1, 6)]
 
@@ -259,7 +291,27 @@ def _looks_word_prompt(prompt: str) -> bool:
     return any(hint in text for hint in WORD_HINTS)
 
 
+def _split_instruction(text: str) -> tuple[str, str]:
+    raw = BLANK_ANSWER.sub(" ", text or "")
+    match = INSTRUCTION_END.search(raw)
+    if not match:
+        return "", raw
+    stem = _squash(raw[: match.end()]).strip(" .")
+    rest = re.sub(r"^[\s.]+", "", raw[match.end() :])
+    return stem, rest
+
+
+def _cut_before_option_list(text: str) -> str:
+    match = OPTION_LIST_START.search(text or "")
+    if match:
+        return (text or "")[: match.start()]
+    return text
+
+
 def _cut_at_options(text: str, options: list[str]) -> str:
+    cut = _cut_before_option_list(text)
+    if cut != text:
+        return cut
     compact = _squash(text)
     for option in options:
         if not option:
@@ -282,20 +334,33 @@ def _strip_prompt_tail(text: str, strip_number: bool) -> str:
     return text.strip(" .")
 
 
-def _task_prompt(body: str, options: list[str]) -> str:
-    text = BLANK_ANSWER.sub(" ", body or "")
-    if options:
-        text = _cut_at_options(text, options)
-        text = _strip_prompt_tail(_squash(text), strip_number=True)
-        return (text[:800] or EGE_PROMPT).strip()
-    text = SENTENCE_NUM.sub(r"\n\1", text)
+def _format_passage(text: str) -> str:
+    text = re.sub(
+        r"^(.*\S)[ \t]*(\(\d+\)(?=[А-ЯЁA-Z«\"]))",
+        r"\1\n\n\2",
+        text or "",
+        count=1,
+    )
     lines = []
     for line in text.splitlines():
         piece = _squash(line)
         if piece:
             lines.append(piece)
-    text = _strip_prompt_tail("\n".join(lines), strip_number=False)
-    return text[:4000].strip()
+    return "\n".join(lines).strip()
+
+
+def _task_prompt(body: str, options: list[str]) -> str:
+    stem, rest = _split_instruction(body or "")
+    if options:
+        text = stem or _cut_at_options(BLANK_ANSWER.sub(" ", body or ""), options)
+        text = _strip_prompt_tail(_squash(text), strip_number=True)
+        return (text[:800] or EGE_PROMPT).strip()
+    if stem:
+        passage = _format_passage(rest)
+        text = f"{stem}\n\n{passage}" if passage else stem
+        return re.sub(r"\n{3,}", "\n\n", _strip_prompt_tail(text, strip_number=False))[:4000].strip()
+    text = _format_passage(BLANK_ANSWER.sub(" ", body or ""))
+    return _strip_prompt_tail(text, strip_number=False)[:4000].strip()
 
 
 def _take_inline_answer(body: str) -> str:

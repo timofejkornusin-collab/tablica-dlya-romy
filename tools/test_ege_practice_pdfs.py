@@ -195,9 +195,31 @@ class SyntheticPdfImportTest(unittest.TestCase):
         self.assertIn("необыкнове(1)о", tasks[0]["prompt"])
         self.assertNotIn("Ответ", tasks[0]["prompt"])
         self.assertIn("(1)Я сидел", tasks[1]["prompt"])
-        self.assertIn("\n(1)", tasks[1]["prompt"])
+        self.assertIn("\n\n", tasks[0]["prompt"])
+        self.assertIn("\n\n", tasks[1]["prompt"])
+        self.assertTrue(tasks[1]["prompt"].split("\n\n")[0].endswith("предложений"))
         self.assertFalse(journal.is_word_task(tasks[0]))
         self.assertFalse(journal.is_word_task(tasks[1]))
+
+    def test_glued_instruction_does_not_share_line_with_options(self) -> None:
+        text = (
+            "1.Укажите варианты ответов, в которых во всех словах одного ряда пропущена одна и та же буква. "
+            "Запишите номера ответов. Ответ: ________________.1. сп…ртакиада, прил…скать "
+            "2. кап…шон, ж…ри 3. верм…шель, экстр…мальный 4. м…нталитет, ч…столюбивый "
+            "5. игн…рировать, симп…тичный "
+            "2.Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. "
+            "Запишите номера этих предложений. Ответ: ________________.(1)Я сидел в кают-компании. (2)Вдруг в дверь постучали."
+        )
+        tasks = pdf_import.parse_tasks(text)
+        self.assertEqual([task["n"] for task in tasks], [1, 2])
+        self.assertEqual(len([item for item in tasks[0]["options"] if item]), 5)
+        self.assertNotIn("сп…ртакиада", tasks[0]["prompt"])
+        self.assertNotRegex(tasks[0]["prompt"], r"1[.)]")
+        self.assertTrue(tasks[0]["options"][0].startswith("сп"))
+        self.assertIn("\n\n", tasks[1]["prompt"])
+        instruction, passage = tasks[1]["prompt"].split("\n\n", 1)
+        self.assertNotIn("(1)", instruction)
+        self.assertTrue(passage.startswith("(1)Я сидел"))
 
     def test_ege10_raw_keeps_numbers_and_five_options(self) -> None:
         raw_path = ROOT / "data" / "ege-10-raw.txt"
