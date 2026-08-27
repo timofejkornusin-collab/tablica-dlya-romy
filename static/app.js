@@ -874,8 +874,9 @@ function renderPractice() {
       const isPhrases = task.kind === "phrases";
       const isWord = Boolean(task.word) || task.kind === "word" || isPhrases;
       const listTag = isPhrases ? "ul" : "ol";
+      const skip = `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`;
       const options = optionItems.length
-        ? `<${listTag} class="task-options${isPhrases ? " task-phrases" : ""}">${optionItems
+        ? `${skip}<${listTag} class="task-options${isPhrases ? " task-phrases" : ""}">${optionItems
             .map((option) => `<li>${escapeHtml(option)}</li>`)
             .join("")}</${listTag}>`
         : "";
@@ -902,7 +903,7 @@ function renderPractice() {
             <span class="task-tag">Задание ЕГЭ</span>
           </div>
           ${renderTaskPrompt(task.prompt || data.instruction || "")}
-          ${options ? `<p class="task-gap">&nbsp;</p>${options}` : ""}
+          ${options}
           <div class="task-actions">
             <label class="task-field-label">Ответ ученика
               <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="${answerPlaceholder}" ${locked ? "readonly" : ""} />
@@ -965,8 +966,8 @@ function escapeHtml(value) {
 function formatTaskPrompt(text) {
   let raw = String(text || "").replace(/\r/g, "");
   raw = raw.replace(
-    /(Запишите номера этих предложений\.?|Запишите номера ответов\.?|запишите слово правильно\.?|Запишите это слово\.?)\s*(?=(?:[1-5][.)]|\(\d+\)[А-ЯЁA-Z«"]|\S))/gi,
-    "$1\n\n"
+    /(Запишите номера этих предложений|Запишите номера ответов|запишите слово правильно|Запишите это слово)\.?\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«"])/gi,
+    "$1.\n\n"
   );
   raw = raw.replace(/\n{3,}/g, "\n\n");
   return raw;
@@ -975,10 +976,11 @@ function formatTaskPrompt(text) {
 function renderTaskPrompt(text) {
   const raw = formatTaskPrompt(text).trim();
   const parts = raw.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  const skip = `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`;
   const blocks = (parts.length ? parts : [raw]).map(
     (part) => `<p class="task-prompt">${escapeHtml(part).replaceAll("\n", "<br>")}</p>`
   );
-  return blocks.join('<p class="task-gap">&nbsp;</p>');
+  return blocks.join(skip);
 }
 
 function linkifyText(text) {
