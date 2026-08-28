@@ -25,6 +25,31 @@ const TEMPLATE_LABELS = {
 
 const TABLE_CLIPBOARD_KEY = "journal-table-clipboard-v1";
 
+function ensureTableCopyButtons() {
+  const actions = document.getElementById("table-actions");
+  if (!actions) return;
+  const settings = document.getElementById("settings-btn");
+  if (!document.getElementById("copy-table-btn")) {
+    const button = document.createElement("button");
+    button.id = "copy-table-btn";
+    button.className = "secondary-btn hidden";
+    button.type = "button";
+    button.textContent = "Копировать таблицу";
+    actions.insertBefore(button, settings || null);
+  }
+  if (!document.getElementById("paste-table-btn")) {
+    const button = document.createElement("button");
+    button.id = "paste-table-btn";
+    button.className = "secondary-btn hidden";
+    button.type = "button";
+    button.disabled = true;
+    button.textContent = "Вставить таблицу";
+    actions.insertBefore(button, settings || null);
+  }
+}
+
+ensureTableCopyButtons();
+
 const state = {
   students: [],
   banks: [],

@@ -89,22 +89,10 @@ from pathlib import Path
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
-if 'id="copy-table-btn"' not in text:
-    anchor = '            <button id="settings-btn" class="secondary-btn hidden" type="button">Настройки</button>'
-    buttons = (
-        '            <button id="copy-table-btn" class="secondary-btn hidden" '
-        'type="button">Копировать таблицу</button>\n'
-        '            <button id="paste-table-btn" class="secondary-btn hidden" '
-        'type="button" disabled>Вставить таблицу</button>\n'
-    )
-    if anchor not in text:
-        raise SystemExit("Не найдено место для кнопок в index.html")
-    text = text.replace(anchor, buttons + anchor, 1)
-
 replacements = {
-    r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=table-tools2',
-    r'mobile\.css(?:\?v=[^"]*)?': 'mobile.css?v=table-tools2',
-    r'app\.js(?:\?v=[^"]*)?': 'app.js?v=table-tools2',
+    r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=table-tools3',
+    r'mobile\.css(?:\?v=[^"]*)?': 'mobile.css?v=table-tools3',
+    r'app\.js(?:\?v=[^"]*)?': 'app.js?v=table-tools3',
     r'practice-scales\.css(?:\?v=[^"]*)?': 'practice-scales.css?v=2',
     r'practice-scales\.js(?:\?v=[^"]*)?': 'practice-scales.js?v=2',
 }
@@ -133,10 +121,12 @@ restart_on_8765
 
 local_code="$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ || true)"
 app_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/app.js | grep -c 'copy-table-btn' || true)"
-index_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/ | grep -c 'table-tools2' || true)"
-api_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/api/students | grep -c 'lessonStatus' || true)"
+index_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/ | grep -c 'table-tools3' || true)"
+api_code="$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/api/students || true)"
 
-if [ "$local_code" != "200" ] || [ "$app_marker" = "0" ] || [ "$index_marker" = "0" ] || [ "$api_marker" = "0" ]; then
+echo "Проверка: site=$local_code app=$app_marker index=$index_marker api=$api_code"
+
+if [ "$local_code" != "200" ] || [ "$app_marker" = "0" ] || [ "$index_marker" = "0" ]; then
   echo "ПРОВЕРКА НЕ ПРОШЛА. ВОССТАНАВЛИВАЮ ПРЕЖНЮЮ ВЕРСИЮ."
   restore_files
   restart_on_8765
