@@ -55,6 +55,43 @@ class LessonStatusTest(unittest.TestCase):
         self.assertEqual(student["rows"][0]["lessonStatus"], "missed")
         self.assertEqual(journal.public_student(student)["rows"][0]["lessonStatus"], "missed")
 
+    def test_changing_start_date_updates_journal_dates_and_keeps_topics(self) -> None:
+        first = journal.empty_row("03.09.2026, 16:00")
+        first["topic"] = "Тема 1"
+        second = journal.empty_row("10.09.2026, 16:00")
+        second["topic"] = "Тема 2"
+        student = {"rows": [first, second]}
+
+        journal.apply_schedule(
+            student,
+            date(2026, 10, 1),
+            [{"weekday": 3, "time": "17:00"}],
+            "once",
+        )
+
+        self.assertEqual(student["schedule"]["startDate"], "2026-10-01")
+        self.assertEqual(student["rows"][0]["date"], "01.10.2026, 17:00")
+        self.assertEqual(student["rows"][0]["topic"], "Тема 1")
+        self.assertEqual(student["rows"][1]["date"], "08.10.2026, 17:00")
+        self.assertEqual(student["rows"][1]["topic"], "Тема 2")
+
+    def test_same_calendar_date_keeps_its_topic_after_reschedule(self) -> None:
+        first = journal.empty_row("03.09.2026, 16:00")
+        first["topic"] = "Старт"
+        second = journal.empty_row("10.09.2026, 16:00")
+        second["topic"] = "Вторая"
+        student = {"rows": [first, second]}
+
+        journal.apply_schedule(
+            student,
+            date(2026, 9, 10),
+            [{"weekday": 3, "time": "16:00"}],
+            "once",
+        )
+
+        self.assertEqual(student["rows"][0]["date"], "10.09.2026, 16:00")
+        self.assertEqual(student["rows"][0]["topic"], "Вторая")
+
 
 class TableCopyTest(unittest.TestCase):
     def test_copy_replaces_table_but_preserves_identity_and_answers(self) -> None:

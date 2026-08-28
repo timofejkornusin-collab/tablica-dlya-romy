@@ -123,17 +123,20 @@ def row_date_key(row: dict | None) -> str:
 
 def apply_schedule(student: dict, start: date, slots: list[dict], template: str) -> None:
     dates = generate_lesson_dates(start, slots)
+    old_rows = [row for row in student.get("rows") or [] if isinstance(row, dict)]
     old_by_date = {}
-    for row in student.get("rows") or []:
-        if not isinstance(row, dict):
-            continue
-        key = str(row.get("date") or "").split(",")[0].strip()
+    for row in old_rows:
+        key = row_date_key(row)
         if key and key not in old_by_date:
             old_by_date[key] = row
     new_rows = []
-    for date_str in dates:
+    for index, date_str in enumerate(dates):
         key = date_str.split(",")[0].strip()
-        prev = old_by_date.get(key, {})
+        prev = old_by_date.get(key)
+        if prev is None and index < len(old_rows):
+            prev = old_rows[index]
+        if prev is None:
+            prev = {}
         row = empty_row(date_str)
         for field in (
             "topic",

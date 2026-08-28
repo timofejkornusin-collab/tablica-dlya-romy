@@ -559,6 +559,7 @@ function showCreatedAccess(name, login, password, lead) {
 }
 
 function collectCreateSlots() {
+  syncStartDateWeekday();
   const template = els.studentForm.template.value === "twice" ? "twice" : "once";
   const slots = [
     { weekday: Number(els.weekday0.value), time: els.time0.value || "16:00" },
@@ -566,7 +567,14 @@ function collectCreateSlots() {
   if (template === "twice") {
     slots.push({ weekday: Number(els.weekday1.value), time: els.time1.value || "16:00" });
   }
-  return { template, slots, startDate: els.startDate.value };
+  return { template, slots, startDate: els.startDate ? els.startDate.value : "" };
+}
+
+function syncStartDateWeekday() {
+  if (!els.startDate || !els.startDate.value || !els.weekday0) return;
+  const date = new Date(`${els.startDate.value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return;
+  els.weekday0.value = String((date.getDay() + 6) % 7);
 }
 
 async function persistCurrent() {
@@ -709,9 +717,9 @@ async function pasteCopiedTable() {
       }),
     });
   }
-  if (data && data.student) {
-    replaceStudent(data.student);
-  }
+    if (data && data.student) {
+      replaceStudent(data.student, { keepRicher: true });
+    }
   await persistCurrent();
   skipTableDomSync = true;
   renderTable();
@@ -1373,12 +1381,12 @@ function renderMaterialCell(row, rowIndex, column) {
   </td>`;
 }
 
-function replaceStudent(student) {
+function replaceStudent(student, options = {}) {
   if (!student || !student.id) return;
   const index = state.students.findIndex((item) => item.id === student.id);
   if (index < 0) return;
   const current = state.students[index];
-  if (current && tableContentScore(current) > tableContentScore(student)) {
+  if (options.keepRicher && current && tableContentScore(current) > tableContentScore(student)) {
     student = {
       ...student,
       rows: cloneTableData(current.rows || []),
@@ -1438,13 +1446,11 @@ els.modal.addEventListener("click", (event) => {
 els.studentForm.addEventListener("change", (event) => {
   if (event.target.name === "template") toggleSecondSlot();
 });
-els.startDate.addEventListener("change", () => {
-  if (!els.startDate.value) return;
-  const date = new Date(`${els.startDate.value}T12:00:00`);
-  if (!Number.isNaN(date.getTime())) {
-    els.weekday0.value = String((date.getDay() + 6) % 7);
-  }
-});
+if (els.startDate) {
+  const onStartDateChange = () => syncStartDateWeekday();
+  els.startDate.addEventListener("change", onStartDateChange);
+  els.startDate.addEventListener("input", onStartDateChange);
+}
 els.backBtn.addEventListener("click", () => {
   if (state.view === "practice") {
     closePractice();
@@ -1532,6 +1538,9 @@ els.studentForm.addEventListener("submit", async (event) => {
   const { template, slots, startDate } = collectCreateSlots();
   try {
     if (state.settingsStudentId) {
+      clearTimeout(saveTimer);
+      await saveChain.catch(() => {});
+      bumpSaveEpoch(state.settingsStudentId);
       const data = await api("/api/schedule", {
         method: "POST",
         body: JSON.stringify({
