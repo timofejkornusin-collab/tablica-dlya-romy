@@ -125,6 +125,43 @@
     overflow-x: auto !important;
   }
 
+  td.col-date .date-cell {
+    position: static !important;
+    inset: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  td.col-date .lesson-status-controls {
+    padding: 7px 0 0 !important;
+  }
+
+  td.col-date .lesson-status-btn {
+    min-height: 36px;
+    font-size: 0.76rem;
+  }
+
+  td.col-date .lesson-status-badge {
+    margin: 7px 0 0;
+  }
+
+  td.col-date .date-cell-bottom {
+    width: 100%;
+  }
+
+  td.col-date .date-row-tools {
+    padding: 6px 0 0 !important;
+    justify-content: flex-start !important;
+  }
+
+  td.col-date .row-copy-btn,
+  td.col-date .row-paste-btn {
+    width: 36px;
+    height: 36px;
+  }
+
   .material-tools,
   .file-corner {
     position: static !important;
@@ -187,6 +224,7 @@
     inset: 0;
     z-index: 180;
     overflow: auto;
+    overflow-anchor: none;
     background: #f5f0e6;
     padding: 12px;
     padding-top: max(12px, env(safe-area-inset-top));

@@ -19,31 +19,98 @@ EGE_PROMPT = (
 
 MAX_PDF_BYTES = 20 * 1024 * 1024
 TASK_VERBS = (
-    "Укажите",
-    "Выберите",
-    "Прочитайте",
-    "Определите",
-    "Найдите",
-    "Установите",
-    "Вставьте",
-    "Исправьте",
+    "Отредактируйте",
+    "тредактируйте",
     "Сопоставьте",
+    "опоставьте",
+    "Прочитайте",
+    "рочитайте",
+    "Определите",
+    "пределите",
+    "Расставьте",
+    "асставьте",
+    "Установите",
+    "становите",
+    "Исправьте",
+    "справьте",
+    "Выпишите",
+    "ыпишите",
+    "Укажите",
+    "кажите",
+    "Выберите",
+    "ыберите",
+    "Найдите",
+    "айдите",
+    "Вставьте",
+    "ставьте",
     "Запишите",
+    "апишите",
+    "Замените",
+    "амените",
+    "В одном",
+    "одном",
     "Укажи",
+    "кажи",
     "Выбери",
+    "ыбери",
     "Прочитай",
+    "рочитай",
 )
 TASK_START = re.compile(
-    r"(?m)^(?:№\s*)?(\d{1,3})\.\s*(?=(?:%s))" % "|".join(TASK_VERBS)
+    r"(?:^|(?<=[\s.]))(?:№\s*)?(\d{1,3})(?:\.\s*|\s+)(?=(?:%s))"
+    % "|".join(sorted((re.escape(verb) for verb in TASK_VERBS), key=len, reverse=True)),
+    re.M,
 )
 LOOSE_START = re.compile(r"(?m)^(?:№\s*)?(\d{1,3})[.)]\s+(?=[А-ЯЁA-Z])")
 OPTION_BLOCK = re.compile(r"(?ms)^\s*([1-5])[.)]\s*(.*?)(?=^\s*[1-5][.)]\s*|\Z)")
-ANSWER_LINE = re.compile(r"Ответ:\s*([1-5]{1,5})\b", re.I)
-BLANK_ANSWER = re.compile(r"Ответ:\s*_+\.?", re.I)
+ANSWER_LINE = re.compile(
+    r"(?<![A-Za-zА-Яа-яЁё])Ответ\s*:\s*(?!_{2,}|[—–\-.]{3,})([A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9,\s-]{0,48})",
+    re.I,
+)
+BLANK_ANSWER = re.compile(r"Ответ\s*:?\s*[_\-–—.]{3,}\.?", re.I)
 EGE_BOILERPLATE = re.compile(
     r"варианты ответов, в которых во всех словах одного ряда пропущена одна и та же буква\.\s*"
     r"Запишите номера ответов\.\s*Ответ:\s*_+\.?\s*",
     re.I,
+)
+KEY_HEADING = re.compile(
+    r"^(?:ключи ответов|ключ ответов|ответы к заданиям)\b.*$|^ответы\s*:?\s*$",
+    re.I | re.M,
+)
+CAPS_WORD = re.compile(r"(?<![А-ЯЁа-яёA-Za-z])[А-ЯЁ]{3,}(?![А-ЯЁа-яёA-Za-z])")
+TRAILING_TASK_NUM = re.compile(r"(?:\s+\d{1,3}\.?|\s*\d{1,3}\.)\s*$")
+OPTION_LIST_START = re.compile(r"(?:(?<=^)|(?<=[\s.]))1[.)][ \t]*\S")
+INLINE_OPTION = re.compile(
+    r"(?:(?<=^)|(?<=[\s.]))([1-5])[.)][ \t]+(\S.*?)(?=(?:[\s.]+)[1-5][.)][ \t]+|\s*\Z)",
+    re.S,
+)
+INSTRUCTION_END = re.compile(
+    r"(?is)("
+    r"Запишите номера этих предложений|"
+    r"Запишите номера ответов|"
+    r"запишите слово правильно|"
+    r"Запишите это слово|"
+    r"на месте которой.{0,24}пишется.{0,48}?"
+    r")\.?"
+)
+WORD_HINTS = (
+    "запишите слово",
+    "запишите это слово",
+    "слово правильно",
+    "выпишите",
+    "грамматическая ошибка",
+    "исправьте ошибку",
+    "лексическ",
+    "отредактируйте",
+    "постановке ударения",
+)
+NUMBER_HINTS = (
+    "запишите номера",
+    "номера ответов",
+    "номера этих",
+    "цифру",
+    "цифры",
+    "цифр",
 )
 
 
@@ -109,6 +176,18 @@ def _clean_extracted(text: str) -> str:
     text = text.replace("\u00ad", "")
     text = re.sub(r"\s*—\s*\d+\s+of\s+\d+\s*—", "\n", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(
+        r"(Ответ\s*:?\s*[_\-–—.]{3,}\.?)\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«\"])",
+        r"\1\n",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r"((?:Запишите номера ответов|Запишите номера этих предложений|запишите слово правильно|Запишите это слово)\.)\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«\"])",
+        r"\1\n\n",
+        text,
+        flags=re.I,
+    )
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -124,7 +203,7 @@ def parse_tasks(text: str) -> list[dict]:
 
 def _split_tasks(text: str) -> list[tuple[int, str]]:
     found = _chunks_from_matches(text, list(TASK_START.finditer(text)))
-    if len(found) >= 2:
+    if found:
         return found
     loose = []
     for number, body in _chunks_from_matches(text, list(LOOSE_START.finditer(text))):
@@ -157,56 +236,177 @@ def _unique_tasks(items: list[tuple[int, str]]) -> list[tuple[int, str]]:
     return unique
 
 
+def _squash(text: str) -> str:
+    return " ".join((text or "").split())
+
+
 def _make_task(number: int, body: str) -> dict | None:
     answer = _take_inline_answer(body)
-    options = _options_1_to_5(EGE_BOILERPLATE.sub("\n", body))
+    options = _options_1_to_5(body)
+    kind = ""
+    if not options:
+        phrases = _phrase_options(body)
+        if phrases:
+            options = phrases
+            kind = "phrases"
     prompt = _task_prompt(body, options)
     if not prompt and not any(options):
         return None
-    return {"n": number, "prompt": prompt, "options": options, "answer": answer}
+    if not kind and _looks_word_prompt(prompt) and not any(options):
+        kind = "word"
+    task = {"n": number, "prompt": prompt, "options": options, "answer": answer}
+    if kind:
+        task["kind"] = kind
+    return task
 
 
 def _options_1_to_5(body: str) -> list[str]:
     by_num: dict[int, str] = {}
     for num, raw in OPTION_BLOCK.findall(body):
-        line = " ".join(raw.split())
-        line = BLANK_ANSWER.sub("", line).strip()
+        line = _squash(BLANK_ANSWER.sub("", raw))
         if line:
             by_num[int(num)] = line[:500]
+    if len(by_num) < 3:
+        by_num = {}
+        for num, raw in INLINE_OPTION.findall(body):
+            line = _squash(BLANK_ANSWER.sub("", raw))
+            if line and int(num) not in by_num:
+                by_num[int(num)] = line[:500]
     if len(by_num) < 3:
         return []
     return [by_num.get(idx, "") for idx in range(1, 6)]
 
 
-def _task_prompt(body: str, options: list[str]) -> str:
-    if "пропущена одна и та же буква" in body.lower():
-        return EGE_PROMPT
-    text = EGE_BOILERPLATE.sub(" ", body)
+def _phrase_options(body: str) -> list[str]:
+    found = []
+    for raw in (body or "").splitlines():
+        line = BLANK_ANSWER.sub("", raw).strip()
+        if not line or re.match(r"^\d{1,3}[.)]\s", line):
+            continue
+        if CAPS_WORD.search(line):
+            found.append(_squash(line)[:500])
+    if 4 <= len(found) <= 8:
+        return found
+    return []
+
+
+def _looks_word_prompt(prompt: str) -> bool:
+    text = (prompt or "").lower()
+    if any(hint in text for hint in NUMBER_HINTS):
+        return False
+    return any(hint in text for hint in WORD_HINTS)
+
+
+def _split_instruction(text: str) -> tuple[str, str]:
+    raw = BLANK_ANSWER.sub(" ", text or "")
+    match = INSTRUCTION_END.search(raw)
+    if not match:
+        return "", raw
+    stem = _squash(raw[: match.end()]).strip(" .")
+    rest = re.sub(r"^[\s.]+", "", raw[match.end() :])
+    return stem, rest
+
+
+def _cut_before_option_list(text: str) -> str:
+    match = OPTION_LIST_START.search(text or "")
+    if match:
+        return (text or "")[: match.start()]
+    return text
+
+
+def _cut_at_options(text: str, options: list[str]) -> str:
+    cut = _cut_before_option_list(text)
+    if cut != text:
+        return cut
+    compact = _squash(text)
+    for option in options:
+        if not option:
+            continue
+        option_c = _squash(option)
+        index = compact.find(option_c)
+        if index != -1:
+            return compact[:index]
+        index = text.find(option)
+        if index != -1:
+            return text[:index]
+    return text
+
+
+def _strip_prompt_tail(text: str, strip_number: bool) -> str:
     text = BLANK_ANSWER.sub(" ", text)
+    text = re.sub(r"\bОтвет\b\s*:?\s*$", "", text, flags=re.I)
+    if strip_number:
+        text = TRAILING_TASK_NUM.sub("", text)
+    return text.strip(" .")
+
+
+def _format_passage(text: str) -> str:
+    text = text or ""
+    text = re.sub(
+        r"(\S)[ \t]*\n+[ \t]*(\(\d+\)(?=[А-ЯЁA-Z«\"]))",
+        r"\1\n\n\2",
+        text,
+        count=1,
+    )
+    text = re.sub(
+        r"(\S)[ \t]+(\(\d+\)(?=[А-ЯЁA-Z«\"]))",
+        r"\1\n\n\2",
+        text,
+        count=1,
+    )
+    parts = [_squash(part) for part in re.split(r"\n\s*\n", text)]
+    return "\n\n".join(part for part in parts if part).strip()
+
+
+def _task_prompt(body: str, options: list[str]) -> str:
+    stem, rest = _split_instruction(body or "")
     if options:
-        for option in options:
-            if option and option in text:
-                text = text.split(option)[0]
-                break
-    text = " ".join(text.split()).strip(" .")
-    return (text[:800] or EGE_PROMPT).strip()
+        text = stem or _cut_at_options(BLANK_ANSWER.sub(" ", body or ""), options)
+        text = _strip_prompt_tail(_squash(text), strip_number=True)
+        return (text[:800] or EGE_PROMPT).strip()
+    if stem:
+        passage = _format_passage(rest)
+        text = f"{stem}\n\n{passage}" if passage else stem
+        return re.sub(r"\n{3,}", "\n\n", _strip_prompt_tail(text, strip_number=False))[:4000].strip()
+    text = _format_passage(BLANK_ANSWER.sub(" ", body or ""))
+    return _strip_prompt_tail(text, strip_number=False)[:4000].strip()
+
+
+def _normalize_key_text(raw: str) -> str:
+    text = str(raw or "").strip(" .;,-")
+    if not text or set(text) <= set("_-–—."):
+        return ""
+    if re.search(r"[A-Za-zА-Яа-яЁё]", text):
+        return re.sub(r"\s+", " ", text).strip()
+    if re.search(r"[,\s;]+", text):
+        nums = [int(part) for part in re.findall(r"\d+", text)]
+        return "".join(str(n) for n in sorted(set(nums))) if nums else ""
+    digits = re.sub(r"\D", "", text)
+    if not digits:
+        return ""
+    if "0" not in digits and max(digits) <= "5" and len(digits) <= 5:
+        return "".join(sorted(set(digits)))
+    return digits
 
 
 def _take_inline_answer(body: str) -> str:
-    match = ANSWER_LINE.search(body)
+    cleaned = BLANK_ANSWER.sub(" ", body or "")
+    match = ANSWER_LINE.search(cleaned)
     if match:
-        return "".join(sorted(set(match.group(1))))
+        return _normalize_key_text(match.group(1))
     return ""
 
 
 def _apply_answer_section(text: str, tasks: list[dict]) -> None:
-    match = re.search(r"(?im)^(?:ответы|ключи|ключ ответов)\b.*$", text)
+    match = KEY_HEADING.search(text)
     if not match:
         return
     section = text[match.end() :]
     by_num = {}
-    for num, ans in re.findall(r"(?m)^\s*(\d{1,3})[.)\s:–—-]+([1-5]{1,5})\s*$", section):
-        by_num[int(num)] = "".join(sorted(set(ans)))
+    for num, ans in re.findall(r"(?m)^\s*(\d{1,3})[.)\s:–—-]+(.+?)\s*$", section):
+        key = _normalize_key_text(ans)
+        if key:
+            by_num[int(num)] = key
     if len(by_num) < 2:
         return
     for task in tasks:

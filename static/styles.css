@@ -94,6 +94,13 @@ body {
   justify-content: flex-end;
 }
 
+#table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .brand-container {
   display: flex;
   flex-direction: column;
@@ -209,6 +216,12 @@ h1 {
   background: var(--card-warm);
   border-color: var(--navy);
   color: var(--navy-hover);
+}
+
+.secondary-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .ghost-btn {
@@ -496,6 +509,10 @@ tbody tr {
   transition: background-color 0.12s ease;
 }
 
+.teacher-table tbody tr {
+  height: 148px;
+}
+
 .lesson-upcoming td {
   background: #fffdf6;
 }
@@ -531,6 +548,16 @@ tbody tr.row-found td {
 
 tbody tr:hover td {
   background-color: #fffefb;
+}
+
+.lesson-held td.col-date {
+  background: var(--green-soft);
+  box-shadow: inset 4px 0 0 var(--green);
+}
+
+.lesson-missed td.col-date {
+  background: var(--terracotta-soft);
+  box-shadow: inset 4px 0 0 var(--terracotta);
 }
 
 tbody tr.insert-gap {
@@ -617,6 +644,127 @@ textarea.cell-fill {
   overflow: auto;
 }
 
+.date-cell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.date-cell textarea.cell-fill {
+  position: static;
+  inset: auto;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 32px;
+  padding-bottom: 4px;
+}
+
+.date-cell-bottom {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.lesson-status-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 0 7px 4px;
+}
+
+.lesson-status-btn {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 5px 3px;
+  cursor: pointer;
+}
+
+.lesson-status-btn.status-held[aria-pressed="true"] {
+  border-color: #83c99e;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.lesson-status-btn.status-missed[aria-pressed="true"] {
+  border-color: #e5a59c;
+  background: var(--terracotta-soft);
+  color: var(--terracotta);
+}
+
+.lesson-status-badge {
+  margin: 0 8px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 5px 7px;
+  text-align: center;
+}
+
+.lesson-status-badge.status-held {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.lesson-status-badge.status-missed {
+  background: var(--terracotta-soft);
+  color: var(--terracotta);
+}
+
+.date-row-tools {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px 7px;
+  flex-shrink: 0;
+}
+
+.row-copy-btn,
+.row-paste-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(24, 51, 76, 0.28);
+  border-radius: 8px;
+  background: var(--navy-soft);
+  color: var(--navy);
+  cursor: pointer;
+}
+
+.row-copy-btn:hover,
+.row-paste-btn:hover,
+.row-copy-btn:focus-visible,
+.row-paste-btn:focus-visible {
+  border-color: var(--navy);
+  background: var(--navy-soft);
+  outline: none;
+}
+
+.row-paste-btn.is-disabled {
+  opacity: 0.4;
+}
+
+.row-tool-icon {
+  width: 15px;
+  height: 15px;
+  display: block;
+  pointer-events: none;
+}
+
 td input:focus,
 td textarea:focus,
 input[type="text"]:focus,
@@ -632,7 +780,7 @@ textarea:focus {
 .col-row-tools { width: 44px; }
 
 @media (min-width: 981px) {
-  .col-date      { width: 12%; min-width: 110px; }
+  .col-date      { width: 12%; min-width: 124px; }
   .col-topic     { width: 16%; min-width: 140px; }
   .col-theory    { width: 16%; min-width: 140px; }
   .col-practice  { width: 14%; min-width: 130px; }
@@ -836,20 +984,19 @@ textarea:focus {
   color: var(--ink-heading);
 }
 
-.practice-stats,
-.practice-scales {
-  margin: 0 0 20px;
-  padding: 16px 20px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--line);
-  background: var(--card);
+.practice-summary,
+.practice-stats {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  box-shadow: none;
+  border: 1px solid #fecaca;
+  background: #fff5f5;
+  color: #9b1c1c;
 }
 
 .practice-scales {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: none !important;
 }
 
 .practice-scale {
@@ -911,42 +1058,48 @@ textarea:focus {
   background: var(--navy);
 }
 
+.practice-summary.progress-red,
 .practice-stats.progress-red {
-  background: #fbebe9;
-  border-color: #f3c2bc;
-  color: #8c2518;
+  background: #fff5f5;
+  border-color: #fecaca;
+  color: #9b1c1c;
 }
 
+.practice-summary.progress-yellow,
 .practice-stats.progress-yellow {
   background: #fdf6e7;
   border-color: #fae0ad;
   color: #7a4f08;
 }
 
+.practice-summary.progress-light,
 .practice-stats.progress-light {
   background: #edf7f0;
   border-color: #bce4ca;
   color: #19522e;
 }
 
+.practice-summary.progress-dark,
 .practice-stats.progress-dark {
   background: #236940;
   border-color: #1a4f30;
   color: #ffffff;
 }
 
+.practice-summary .stats-text,
 .practice-stats .stats-text {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: 1.02rem;
+  font-weight: 700;
+  margin: 0 0 4px;
 }
 
-.practice-stats .stats-hint,
-.practice-scales .stats-hint {
-  font-size: 0.88rem;
-  opacity: 0.9;
+.practice-summary .stats-hint,
+.practice-stats .stats-hint {
+  font-size: 0.92rem;
+  font-weight: 400;
   margin: 0;
-  color: var(--muted);
+  opacity: 0.92;
+  color: inherit;
 }
 
 .task-list {
@@ -998,13 +1151,32 @@ textarea:focus {
   font-size: 1.02rem;
   line-height: 1.5;
   color: var(--ink);
-  margin: 0 0 12px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.task-skip {
+  display: block !important;
+  height: 64px !important;
+  min-height: 64px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  line-height: 64px !important;
+  font-size: 32px !important;
+  overflow: hidden !important;
 }
 
 .task-options {
-  margin: 10px 0 16px;
+  margin: 0 0 16px;
+  padding-top: 8px;
   padding-left: 24px;
   line-height: 1.6;
+}
+
+ul.task-options.task-phrases {
+  list-style: none;
+  padding-left: 0;
 }
 
 .task-options li {
@@ -1708,9 +1880,9 @@ textarea[readonly] {
     min-height: 44px;
   }
 
-  .practice-stats,
-  .practice-scales {
-    padding: 14px;
+  .practice-summary,
+  .practice-stats {
+    padding: 12px 14px;
   }
 }
 
