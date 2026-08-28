@@ -125,6 +125,28 @@
     overflow-x: auto !important;
   }
 
+  td.col-date .date-cell {
+    position: static !important;
+    inset: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  td.col-date .lesson-status-controls {
+    padding: 7px 0 0 !important;
+  }
+
+  td.col-date .lesson-status-btn {
+    min-height: 36px;
+    font-size: 0.76rem;
+  }
+
+  td.col-date .lesson-status-badge {
+    margin: 7px 0 0;
+  }
+
   .material-tools,
   .file-corner {
     position: static !important;

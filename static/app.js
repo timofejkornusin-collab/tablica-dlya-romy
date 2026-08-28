@@ -23,6 +23,8 @@ const TEMPLATE_LABELS = {
   twice: "2 раза в неделю",
 };
 
+const TABLE_CLIPBOARD_KEY = "journal-table-clipboard-v1";
+
 const state = {
   students: [],
   banks: [],
@@ -42,6 +44,7 @@ const state = {
   revealedRowIndex: null,
   localTeacher: false,
   pendingNewStudent: false,
+  tableClipboard: null,
 };
 
 const els = {
@@ -67,6 +70,8 @@ const els = {
   templateSelect: document.getElementById("template-select"),
   findWrap: document.getElementById("find-wrap"),
   findRowBtn: document.getElementById("find-row-btn"),
+  copyTableBtn: document.getElementById("copy-table-btn"),
+  pasteTableBtn: document.getElementById("paste-table-btn"),
   findDialog: document.getElementById("find-dialog"),
   findForm: document.getElementById("find-form"),
   findDate: document.getElementById("find-date"),
@@ -114,6 +119,7 @@ let saveChain = Promise.resolve();
 function emptyRow() {
   return {
     date: "",
+    lessonStatus: "",
     topic: "",
     theory: "",
     practice: "",
@@ -328,6 +334,7 @@ function updateModeChrome() {
   if (els.previewBtn) {
     els.previewBtn.classList.toggle("hidden", !isTeacherUi() || !inStudentTable);
   }
+  updateTableCopyButtons();
   document.body.classList.toggle("student-preview", isStudentView());
 }
 
@@ -497,6 +504,76 @@ async function persistCurrent() {
   return saveChain;
 }
 
+function loadTableClipboard() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(TABLE_CLIPBOARD_KEY) || "null");
+    if (stored && stored.sourceId && stored.sourceName) {
+      state.tableClipboard = stored;
+    }
+  } catch (_error) {
+    state.tableClipboard = null;
+  }
+}
+
+function updateTableCopyButtons() {
+  const teacherTable = isTeacherUi() && state.view === "table" && Boolean(currentStudent());
+  if (els.copyTableBtn) {
+    els.copyTableBtn.classList.toggle("hidden", !teacherTable);
+  }
+  if (els.pasteTableBtn) {
+    els.pasteTableBtn.classList.toggle("hidden", !teacherTable);
+    const sameStudent =
+      state.tableClipboard && currentStudent() && state.tableClipboard.sourceId === currentStudent().id;
+    els.pasteTableBtn.disabled = !state.tableClipboard || Boolean(sameStudent);
+    els.pasteTableBtn.title = state.tableClipboard
+      ? sameStudent
+        ? "Откройте таблицу другого ученика"
+        : `Вставить таблицу ученика «${state.tableClipboard.sourceName}»`
+      : "Сначала скопируйте таблицу ученика";
+  }
+}
+
+async function copyCurrentTable() {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  clearTimeout(saveTimer);
+  await persistCurrent();
+  state.tableClipboard = {
+    sourceId: student.id,
+    sourceName: student.name,
+    rows: Array.isArray(student.rows) ? student.rows.length : 0,
+  };
+  try {
+    sessionStorage.setItem(TABLE_CLIPBOARD_KEY, JSON.stringify(state.tableClipboard));
+  } catch (_error) {
+    /* Буфер всё равно действует, пока открыта эта страница. */
+  }
+  updateTableCopyButtons();
+  setSaveStatus(`Таблица «${student.name}» скопирована: ${state.tableClipboard.rows} строк`);
+}
+
+async function pasteCopiedTable() {
+  const target = currentStudent();
+  const copied = state.tableClipboard;
+  if (!target || !copied || !isTeacherUi() || target.id === copied.sourceId) return;
+  const approved = confirm(
+    `Заменить таблицу ученика «${target.name}» таблицей ученика «${copied.sourceName}»?\n\n` +
+      "Даты, темы, материалы, задания и отметки занятий будут скопированы полностью. " +
+      "Личные ответы и прогресс учеников не копируются."
+  );
+  if (!approved) return;
+  clearTimeout(saveTimer);
+  await saveChain.catch(() => {});
+  setSaveStatus("Вставляю таблицу…");
+  const data = await api("/api/table/copy", {
+    method: "POST",
+    body: JSON.stringify({ sourceId: copied.sourceId, targetId: target.id }),
+  });
+  replaceStudent(data.student);
+  renderTable();
+  setSaveStatus(`Таблица «${copied.sourceName}» вставлена ученику «${target.name}»`);
+}
+
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -648,6 +725,7 @@ function bankOptions(selected) {
 
 function rowHasLessonContent(row) {
   if (!row || typeof row !== "object") return false;
+  if (["held", "missed"].includes(row.lessonStatus)) return true;
   if (["topic", "theory", "homework", "comment"].some((key) => String(row[key] || "").trim())) {
     return true;
   }
@@ -711,6 +789,7 @@ function renderTable() {
   if (els.settingsBtn) {
     els.settingsBtn.classList.toggle("hidden", !isTeacherUi());
   }
+  updateTableCopyButtons();
   els.pageTitle.textContent = student.name;
   els.pageSubtitle.textContent = isStudentView()
     ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
@@ -742,6 +821,32 @@ function renderTable() {
       const row = student.rows[rowIndex];
       const upcoming = isStudentView() && !rowHasLessonContent(row);
       const cells = COLUMNS.map((column) => {
+        if (column.key === "date") {
+          const status = ["held", "missed"].includes(row.lessonStatus) ? row.lessonStatus : "";
+          const readonly = isStudentView() ? "readonly" : "";
+          const controls = isTeacherUi()
+            ? `<div class="lesson-status-controls" role="group" aria-label="Состоялось ли занятие">
+                <button class="lesson-status-btn status-held" type="button" data-row="${rowIndex}" data-status="held" aria-pressed="${
+                  status === "held"
+                }">Было</button>
+                <button class="lesson-status-btn status-missed" type="button" data-row="${rowIndex}" data-status="missed" aria-pressed="${
+                  status === "missed"
+                }">Не было</button>
+              </div>`
+            : status
+              ? `<span class="lesson-status-badge status-${status}">${
+                  status === "held" ? "✓ Было занятие" : "× Занятия не было"
+                }</span>`
+              : "";
+          return `<td class="col-date" data-label="${escapeHtml(column.label)}">
+            <div class="date-cell">
+              <textarea class="cell-fill" data-row="${rowIndex}" data-key="date" rows="1" spellcheck="false" placeholder="например 10.09.2026, 17:00" ${readonly}>${escapeHtml(
+                String(row.date || "")
+              )}</textarea>
+              ${controls}
+            </div>
+          </td>`;
+        }
         if (column.key === "practice") {
           const fraction = row.bankId ? row.practice || "0/0" : "—";
           const teacherSelect = isTeacherUi()
@@ -777,9 +882,8 @@ function renderTable() {
         const value = row[column.key] ?? "";
         const locked = isStudentView();
         const readonly = locked ? "readonly" : "";
-        const placeholder = column.key === "date" ? 'placeholder="например 10.09.2026, 17:00"' : "";
         return `<td class="${column.className}" data-label="${escapeHtml(column.label)}">
-          <textarea class="cell-fill" data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false" ${placeholder} ${readonly}>${escapeHtml(
+          <textarea class="cell-fill" data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false" ${readonly}>${escapeHtml(
             String(value)
           )}</textarea>
         </td>`;
@@ -791,6 +895,8 @@ function renderTable() {
         : "";
       const classes = [];
       if (upcoming) classes.push("lesson-upcoming");
+      if (row.lessonStatus === "held") classes.push("lesson-held");
+      if (row.lessonStatus === "missed") classes.push("lesson-missed");
       const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";
       return `<tr${classAttr} data-row="${rowIndex}">${tools}${cells}</tr>${
         isTeacherUi() ? insertGap(rowIndex + 1) : ""
@@ -853,7 +959,7 @@ function renderPractice() {
   const total = Number(stats.total) || 0;
   const done = Number(stats.done) || 0;
   const correct = Number(stats.correct) || 0;
-  const percent = total ? Math.round((100 * correct) / total) : Number(stats.percent) || 0;
+  const percent = Number(stats.percent) || 0;
   const color = data.statsColor || "red";
   const wordBank =
     (data.tasks || []).length > 0 &&
@@ -1083,6 +1189,22 @@ els.addStudentBtn.addEventListener("click", openModal);
 if (els.settingsBtn) {
   els.settingsBtn.addEventListener("click", () => {
     if (state.currentId) openSettings(state.currentId);
+  });
+}
+if (els.copyTableBtn) {
+  els.copyTableBtn.addEventListener("click", () => {
+    copyCurrentTable().catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+  });
+}
+if (els.pasteTableBtn) {
+  els.pasteTableBtn.addEventListener("click", () => {
+    pasteCopiedTable().catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
   });
 }
 if (els.previewBtn) {
@@ -1328,6 +1450,17 @@ els.tableView.addEventListener("change", (event) => {
 });
 
 els.tableView.addEventListener("click", async (event) => {
+  const statusBtn = event.target.closest(".lesson-status-btn");
+  if (statusBtn) {
+    const student = currentStudent();
+    const row = student && student.rows[Number(statusBtn.dataset.row)];
+    if (!row || !isTeacherUi()) return;
+    const selected = statusBtn.dataset.status;
+    row.lessonStatus = row.lessonStatus === selected ? "" : selected;
+    scheduleSave();
+    renderTable();
+    return;
+  }
   const insertBtn = event.target.closest(".insert-lesson");
   if (insertBtn) {
     insertLessonAt(Number(insertBtn.dataset.insert));
@@ -1560,6 +1693,7 @@ async function enterApp() {
 }
 
 async function start() {
+  loadTableClipboard();
   try {
     const session = await loadSession();
     if (!session.user) {

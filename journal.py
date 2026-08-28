@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -21,6 +22,7 @@ FILE_KEYS = (
     "practiceFileId",
     "practiceFileName",
 )
+LESSON_STATUSES = {"held", "missed"}
 WEEKDAY_NAMES = (
     "понедельник",
     "вторник",
@@ -35,6 +37,7 @@ WEEKDAY_NAMES = (
 def empty_row(date_str: str = "") -> dict:
     row = {key: "" for key in ROW_KEYS}
     row["date"] = date_str
+    row["lessonStatus"] = ""
     row["bankId"] = ""
     row["importedSource"] = ""
     for key in FILE_KEYS:
@@ -126,8 +129,19 @@ def apply_schedule(student: dict, start: date, slots: list[dict], template: str)
         key = date_str.split(",")[0].strip()
         prev = old_by_date.get(key, {})
         row = empty_row(date_str)
-        for field in ("topic", "theory", "homework", "comment", "bankId", "importedSource", *FILE_KEYS):
+        for field in (
+            "topic",
+            "theory",
+            "homework",
+            "comment",
+            "lessonStatus",
+            "bankId",
+            "importedSource",
+            *FILE_KEYS,
+        ):
             row[field] = str(prev.get(field) or "")
+        if row["lessonStatus"] not in LESSON_STATUSES:
+            row["lessonStatus"] = ""
         new_rows.append(row)
     student["rows"] = new_rows
     student["template"] = template
@@ -157,6 +171,10 @@ def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bo
             item["importedSource"] = str(row.get("importedSource") or "")
         else:
             item["importedSource"] = str(prev.get("importedSource") or "")
+        raw_status = row.get("lessonStatus") if "lessonStatus" in row else prev.get("lessonStatus")
+        if student_locked:
+            raw_status = prev.get("lessonStatus")
+        item["lessonStatus"] = str(raw_status or "") if str(raw_status or "") in LESSON_STATUSES else ""
         for key in FILE_KEYS:
             item[key] = str(row.get(key) or prev.get(key) or "")
         if student_locked:
@@ -167,6 +185,18 @@ def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bo
             item["progress"] = ""
         cleaned.append(item)
     return cleaned
+
+
+def copy_student_table(source: dict, target: dict) -> None:
+    """Replace a target's lesson table without copying identity or answers."""
+    source_rows = source.get("rows") if isinstance(source.get("rows"), list) else []
+    target["rows"] = clean_rows(copy.deepcopy(source_rows))
+    target["template"] = "twice" if source.get("template") == "twice" else "once"
+    schedule = source.get("schedule")
+    if isinstance(schedule, dict):
+        target["schedule"] = copy.deepcopy(schedule)
+    else:
+        target.pop("schedule", None)
 
 
 def load_bank(bank_id: str) -> dict | None:
@@ -286,14 +316,15 @@ def bank_stats(student: dict, bank_id: str) -> dict:
             key = normalize_answer(str(task.get("answer") or ""), word=word)
             if key and given == key:
                 correct += 1
-    percent = int(round(100 * done / total)) if total else 0
+    done_percent = int(round(100 * done / total)) if total else 0
+    percent = int(round(100 * correct / total)) if total else 0
     accuracy_percent = int(round(100 * correct / done)) if done else 0
     return {
         "done": done,
         "total": total,
         "correct": correct,
         "percent": percent,
-        "donePercent": percent,
+        "donePercent": done_percent,
         "accuracyPercent": accuracy_percent,
     }
 
@@ -317,6 +348,8 @@ def public_student(student: dict | None) -> dict | None:
         if not isinstance(row, dict):
             continue
         item = {key: str(row.get(key, "") or "") for key in ROW_KEYS}
+        status = str(row.get("lessonStatus") or "")
+        item["lessonStatus"] = status if status in LESSON_STATUSES else ""
         item["bankId"] = str(row.get("bankId") or "")
         item["importedSource"] = str(row.get("importedSource") or "")
         for key in FILE_KEYS:

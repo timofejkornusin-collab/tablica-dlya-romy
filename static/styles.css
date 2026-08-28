@@ -94,6 +94,13 @@ body {
   justify-content: flex-end;
 }
 
+#table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .brand-container {
   display: flex;
   flex-direction: column;
@@ -209,6 +216,12 @@ h1 {
   background: var(--card-warm);
   border-color: var(--navy);
   color: var(--navy-hover);
+}
+
+.secondary-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .ghost-btn {
@@ -533,6 +546,16 @@ tbody tr:hover td {
   background-color: #fffefb;
 }
 
+.lesson-held td.col-date {
+  background: var(--green-soft);
+  box-shadow: inset 4px 0 0 var(--green);
+}
+
+.lesson-missed td.col-date {
+  background: var(--terracotta-soft);
+  box-shadow: inset 4px 0 0 var(--terracotta);
+}
+
 tbody tr.insert-gap {
   height: 28px;
 }
@@ -615,6 +638,76 @@ textarea.cell-fill {
   height: 100%;
   min-height: 0;
   overflow: auto;
+}
+
+.date-cell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.date-cell textarea.cell-fill {
+  position: static;
+  inset: auto;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  padding-bottom: 6px;
+}
+
+.lesson-status-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 0 7px 7px;
+}
+
+.lesson-status-btn {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 5px 3px;
+  cursor: pointer;
+}
+
+.lesson-status-btn.status-held[aria-pressed="true"] {
+  border-color: #83c99e;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.lesson-status-btn.status-missed[aria-pressed="true"] {
+  border-color: #e5a59c;
+  background: var(--terracotta-soft);
+  color: var(--terracotta);
+}
+
+.lesson-status-badge {
+  margin: 0 8px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 5px 7px;
+  text-align: center;
+}
+
+.lesson-status-badge.status-held {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.lesson-status-badge.status-missed {
+  background: var(--terracotta-soft);
+  color: var(--terracotta);
 }
 
 td input:focus,
