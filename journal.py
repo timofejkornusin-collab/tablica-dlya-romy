@@ -115,6 +115,12 @@ def generate_lesson_dates(start: date, slots: list[dict]) -> list[str]:
     return result
 
 
+def row_date_key(row: dict | None) -> str:
+    if not isinstance(row, dict):
+        return ""
+    return str(row.get("date") or "").split(",")[0].strip()
+
+
 def apply_schedule(student: dict, start: date, slots: list[dict], template: str) -> None:
     dates = generate_lesson_dates(start, slots)
     old_by_date = {}
@@ -156,10 +162,20 @@ def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bo
     old = keep_from_old or []
     if not isinstance(rows, list):
         return cleaned
+    old_by_date = {}
+    for prev_row in old:
+        key = row_date_key(prev_row)
+        if key and key not in old_by_date:
+            old_by_date[key] = prev_row
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
-        prev = old[index] if index < len(old) and isinstance(old[index], dict) else {}
+        date_key = row_date_key(row)
+        prev = old_by_date.get(date_key) if date_key else None
+        if prev is None and index < len(old) and isinstance(old[index], dict):
+            prev = old[index]
+        if prev is None:
+            prev = {}
         item = empty_row()
         for key in ROW_KEYS:
             item[key] = str(row.get(key, "") or "")
@@ -176,7 +192,10 @@ def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bo
             raw_status = prev.get("lessonStatus")
         item["lessonStatus"] = str(raw_status or "") if str(raw_status or "") in LESSON_STATUSES else ""
         for key in FILE_KEYS:
-            item[key] = str(row.get(key) or prev.get(key) or "")
+            if key in row:
+                item[key] = str(row.get(key) or "")
+            else:
+                item[key] = str(prev.get(key) or "")
         if student_locked:
             for key in ("topic", "theory", "homework", "comment", "bankId", "importedSource", *FILE_KEYS):
                 item[key] = str(prev.get(key, "") or "")

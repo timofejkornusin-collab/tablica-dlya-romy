@@ -20,8 +20,9 @@ class PracticeScrollTest(unittest.TestCase):
         self.assertIn('focusRole: "key"', app_js)
         self.assertIn("preventScroll", app_js)
         self.assertIn("cardTop", app_js)
-        restore_fn = app_js.split("function restorePracticeScroll", 1)[1].split("async function openPractice", 1)[0]
-        self.assertNotIn("scrollIntoView", restore_fn)
+        self.assertIn("applyCopiedTable", app_js)
+        self.assertIn("bumpSaveEpoch", app_js)
+        self.assertIn("syncTableRowsFromDom", app_js)
 
         self.assertNotIn("scrollTop = 0", page_js)
         self.assertNotIn("view.scrollTop = 0", page_js)

@@ -107,6 +107,44 @@ class TableCopyTest(unittest.TestCase):
         source["rows"][0]["topic"] = "Изменено после копирования"
         self.assertEqual(target["rows"][0]["topic"], "Орфография")
 
+    def test_later_save_does_not_drop_pasted_text(self) -> None:
+        source_row = journal.empty_row("03.09.2026, 18:00")
+        source_row["topic"] = "Орфография"
+        source_row["homework"] = "упр. 12"
+        source_row["bankId"] = "ege-10"
+        source = {
+            "rows": [source_row],
+            "template": "once",
+            "schedule": {"startDate": "2026-09-03", "slots": [{"weekday": 3, "time": "18:00"}]},
+        }
+        old_target_row = journal.empty_row("01.01.2025, 16:00")
+        old_target_row["topic"] = ""
+        old_target_row["theoryFileId"] = "old.pdf"
+        target = {"id": "ivan", "name": "Иван", "rows": [old_target_row], "template": "once", "progress": {}}
+
+        journal.copy_student_table(source, target)
+        edited = [dict(target["rows"][0])]
+        edited[0]["comment"] = "правка после вставки"
+        saved = journal.clean_rows(edited, keep_from_old=target["rows"])
+
+        self.assertEqual(saved[0]["topic"], "Орфография")
+        self.assertEqual(saved[0]["homework"], "упр. 12")
+        self.assertEqual(saved[0]["comment"], "правка после вставки")
+        self.assertEqual(saved[0]["bankId"], "ege-10")
+        self.assertEqual(saved[0]["date"], "03.09.2026, 18:00")
+
+    def test_clean_rows_does_not_reuse_files_from_another_date(self) -> None:
+        old = journal.empty_row("01.01.2025, 16:00")
+        old["theoryFileId"] = "old.pdf"
+        old["topic"] = "старое"
+        pasted = journal.empty_row("03.09.2026, 18:00")
+        pasted["topic"] = "новое"
+        pasted["theoryFileId"] = ""
+        saved = journal.clean_rows([pasted], keep_from_old=[old])
+        self.assertEqual(saved[0]["topic"], "новое")
+        self.assertEqual(saved[0]["theoryFileId"], "")
+        self.assertEqual(len(saved), 1)
+
     def test_shared_upload_reference_is_detected(self) -> None:
         first = journal.empty_row()
         first["theoryFileId"] = "shared.pdf"

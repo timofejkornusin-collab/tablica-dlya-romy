@@ -140,6 +140,63 @@ const els = {
 let saveTimer = null;
 let pollTimer = null;
 let saveChain = Promise.resolve();
+let skipTableDomSync = false;
+const saveEpochByStudent = Object.create(null);
+
+function bumpSaveEpoch(studentId) {
+  const id = String(studentId || "");
+  if (!id) return 0;
+  saveEpochByStudent[id] = (saveEpochByStudent[id] || 0) + 1;
+  return saveEpochByStudent[id];
+}
+
+function cloneTableData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function tableContentScore(student) {
+  return (student && Array.isArray(student.rows) ? student.rows : []).reduce((sum, row) => {
+    if (!row || typeof row !== "object") return sum;
+    return (
+      sum +
+      ["date", "topic", "theory", "homework", "comment"].reduce(
+        (part, key) => part + String(row[key] || "").trim().length,
+        0
+      )
+    );
+  }, 0);
+}
+
+function syncTableRowsFromDom(student) {
+  if (!student || !els.tableView || els.tableView.classList.contains("hidden")) return;
+  if (state.view !== "table" || state.currentId !== student.id) return;
+  const wrap = els.tableView.querySelector(".table-wrap");
+  if (!wrap || wrap.getAttribute("data-student-id") !== String(student.id)) return;
+  if (!Array.isArray(student.rows)) student.rows = [];
+  els.tableView.querySelectorAll("textarea[data-row][data-key]").forEach((area) => {
+    const index = Number(area.dataset.row);
+    if (!Number.isInteger(index) || index < 0) return;
+    while (student.rows.length <= index) student.rows.push(emptyRow());
+    const row = student.rows[index];
+    if (!row) return;
+    row[area.dataset.key] = area.value;
+  });
+  els.tableView.querySelectorAll("select[data-role='bank']").forEach((select) => {
+    const index = Number(select.dataset.row);
+    const row = student.rows[index];
+    if (!row) return;
+    row.bankId = select.value;
+  });
+}
+
+function applyCopiedTable(target, copied) {
+  const rows = Array.isArray(copied.rowData) ? copied.rowData : [];
+  target.rows = cloneTableData(rows);
+  target.template = copied.template === "twice" ? "twice" : "once";
+  if (copied.schedule) {
+    target.schedule = cloneTableData(copied.schedule);
+  }
+}
 
 function emptyRow() {
   return {
@@ -513,18 +570,24 @@ function collectCreateSlots() {
 }
 
 async function persistCurrent() {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return saveChain;
+  syncTableRowsFromDom(student);
+  const id = student.id;
+  const epoch = saveEpochByStudent[id] || 0;
+  const payload = {
+    id,
+    rows: cloneTableData(Array.isArray(student.rows) ? student.rows : []),
+    template: student.template === "twice" ? "twice" : "once",
+  };
   const run = async () => {
-    const student = currentStudent();
-    if (!student || !isTeacherUi()) return;
+    if ((saveEpochByStudent[id] || 0) !== epoch) return;
     setSaveStatus("Сохранение…");
     await api("/api/table", {
       method: "POST",
-      body: JSON.stringify({
-        id: student.id,
-        rows: student.rows,
-        template: student.template,
-      }),
+      body: JSON.stringify(payload),
     });
+    if ((saveEpochByStudent[id] || 0) !== epoch) return;
     setSaveStatus("Сохранено");
   };
   saveChain = saveChain.then(run, run);
@@ -564,14 +627,15 @@ async function copyCurrentTable() {
   const student = currentStudent();
   if (!student || !isTeacherUi()) return;
   clearTimeout(saveTimer);
+  syncTableRowsFromDom(student);
   await persistCurrent();
   state.tableClipboard = {
     sourceId: student.id,
     sourceName: student.name,
     rows: Array.isArray(student.rows) ? student.rows.length : 0,
-    rowData: JSON.parse(JSON.stringify(Array.isArray(student.rows) ? student.rows : [])),
+    rowData: cloneTableData(Array.isArray(student.rows) ? student.rows : []),
     template: student.template === "twice" ? "twice" : "once",
-    schedule: student.schedule ? JSON.parse(JSON.stringify(student.schedule)) : null,
+    schedule: student.schedule ? cloneTableData(student.schedule) : null,
   };
   try {
     sessionStorage.setItem(TABLE_CLIPBOARD_KEY, JSON.stringify(state.tableClipboard));
@@ -586,6 +650,17 @@ async function pasteCopiedTable() {
   const target = currentStudent();
   const copied = state.tableClipboard;
   if (!target || !copied || !isTeacherUi() || target.id === copied.sourceId) return;
+  if (!Array.isArray(copied.rowData) || !copied.rowData.length) {
+    const source = state.students.find((item) => item.id === copied.sourceId);
+    if (source && Array.isArray(source.rows)) {
+      copied.rowData = cloneTableData(source.rows);
+      copied.template = source.template === "twice" ? "twice" : copied.template;
+      copied.schedule = source.schedule ? cloneTableData(source.schedule) : copied.schedule;
+    }
+  }
+  if (!Array.isArray(copied.rowData)) {
+    throw new Error("Сначала скопируйте таблицу ещё раз — буфер оказался пустым.");
+  }
   const approved = confirm(
     `Заменить таблицу ученика «${target.name}» таблицей ученика «${copied.sourceName}»?\n\n` +
       "Даты, темы, материалы, задания и отметки занятий будут скопированы полностью. " +
@@ -594,39 +669,51 @@ async function pasteCopiedTable() {
   if (!approved) return;
   clearTimeout(saveTimer);
   await saveChain.catch(() => {});
+  bumpSaveEpoch(target.id);
+  applyCopiedTable(target, copied);
+  skipTableDomSync = true;
+  renderTable();
   setSaveStatus("Вставляю таблицу…");
-  let data;
+  let data = { student: target };
   try {
     data = await api("/api/table/copy", {
       method: "POST",
       body: JSON.stringify({ sourceId: copied.sourceId, targetId: target.id }),
     });
   } catch (error) {
-    if (error.status !== 404 || !Array.isArray(copied.rowData)) throw error;
+    if (error.status !== 404 && error.status !== 405) throw error;
     const schedule = copied.schedule;
     if (schedule && schedule.startDate && Array.isArray(schedule.slots) && schedule.slots.length) {
-      await api("/api/schedule", {
-        method: "POST",
-        body: JSON.stringify({
-          id: target.id,
-          name: target.name,
-          template: copied.template,
-          startDate: schedule.startDate,
-          slots: schedule.slots,
-          regenerate: false,
-        }),
-      });
+      try {
+        await api("/api/schedule", {
+          method: "POST",
+          body: JSON.stringify({
+            id: target.id,
+            name: target.name,
+            template: copied.template,
+            startDate: schedule.startDate,
+            slots: schedule.slots,
+            regenerate: false,
+          }),
+        });
+      } catch (_scheduleError) {
+        /* строки всё равно сохраняем через /api/table */
+      }
     }
     data = await api("/api/table", {
       method: "POST",
       body: JSON.stringify({
         id: target.id,
-        rows: copied.rowData,
-        template: copied.template,
+        rows: cloneTableData(target.rows),
+        template: target.template,
       }),
     });
   }
-  replaceStudent(data.student);
+  if (data && data.student) {
+    replaceStudent(data.student);
+  }
+  await persistCurrent();
+  skipTableDomSync = true;
   renderTable();
   setSaveStatus(`Таблица «${copied.sourceName}» вставлена ученику «${target.name}»`);
 }
@@ -823,6 +910,8 @@ function renderTable() {
     if (isTeacherAccount()) renderList();
     return;
   }
+  if (!skipTableDomSync) syncTableRowsFromDom(student);
+  skipTableDomSync = false;
   if (!isTeacherUi()) hideRowConfirm();
   document.body.classList.remove("practice-open");
 
@@ -964,7 +1053,7 @@ function renderTable() {
     : rowIndexes.map(renderLessonRow).join("");
 
   els.tableView.innerHTML = `
-    <div class="table-wrap">
+    <div class="table-wrap" data-student-id="${escapeHtml(String(student.id || ""))}">
       <table>
         <thead><tr>${head}</tr></thead>
         <tbody>${body}</tbody>
@@ -1287,7 +1376,18 @@ function renderMaterialCell(row, rowIndex, column) {
 function replaceStudent(student) {
   if (!student || !student.id) return;
   const index = state.students.findIndex((item) => item.id === student.id);
-  if (index >= 0) state.students[index] = student;
+  if (index < 0) return;
+  const current = state.students[index];
+  if (current && tableContentScore(current) > tableContentScore(student)) {
+    student = {
+      ...student,
+      rows: cloneTableData(current.rows || []),
+      template: current.template || student.template,
+      schedule: current.schedule || student.schedule,
+    };
+  }
+  state.students[index] = student;
+  skipTableDomSync = true;
 }
 
 function afterLogin() {
@@ -1352,14 +1452,16 @@ els.backBtn.addEventListener("click", () => {
   }
   renderList();
 });
-els.templateSelect.addEventListener("change", () => {
-  const student = currentStudent();
-  if (!student || !isTeacherUi()) return;
-  student.template = els.templateSelect.value;
-  const second = document.getElementById("table-second-slot");
-  if (second) second.classList.toggle("hidden", student.template !== "twice");
-  scheduleSave();
-});
+if (els.templateSelect) {
+  els.templateSelect.addEventListener("change", () => {
+    const student = currentStudent();
+    if (!student || !isTeacherUi()) return;
+    student.template = els.templateSelect.value;
+    const second = document.getElementById("table-second-slot");
+    if (second) second.classList.toggle("hidden", student.template !== "twice");
+    scheduleSave();
+  });
+}
 if (els.findRowBtn) {
   els.findRowBtn.addEventListener("click", () => {
     if (!currentStudent()) {
