@@ -376,7 +376,9 @@ async function api(path, options = {}) {
     data = {};
   }
   if (!response.ok) {
-    throw new Error(data.error || "Ошибка запроса");
+    const error = new Error(data.error || "Ошибка запроса");
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -542,6 +544,9 @@ async function copyCurrentTable() {
     sourceId: student.id,
     sourceName: student.name,
     rows: Array.isArray(student.rows) ? student.rows.length : 0,
+    rowData: JSON.parse(JSON.stringify(Array.isArray(student.rows) ? student.rows : [])),
+    template: student.template === "twice" ? "twice" : "once",
+    schedule: student.schedule ? JSON.parse(JSON.stringify(student.schedule)) : null,
   };
   try {
     sessionStorage.setItem(TABLE_CLIPBOARD_KEY, JSON.stringify(state.tableClipboard));
@@ -565,10 +570,37 @@ async function pasteCopiedTable() {
   clearTimeout(saveTimer);
   await saveChain.catch(() => {});
   setSaveStatus("Вставляю таблицу…");
-  const data = await api("/api/table/copy", {
-    method: "POST",
-    body: JSON.stringify({ sourceId: copied.sourceId, targetId: target.id }),
-  });
+  let data;
+  try {
+    data = await api("/api/table/copy", {
+      method: "POST",
+      body: JSON.stringify({ sourceId: copied.sourceId, targetId: target.id }),
+    });
+  } catch (error) {
+    if (error.status !== 404 || !Array.isArray(copied.rowData)) throw error;
+    const schedule = copied.schedule;
+    if (schedule && schedule.startDate && Array.isArray(schedule.slots) && schedule.slots.length) {
+      await api("/api/schedule", {
+        method: "POST",
+        body: JSON.stringify({
+          id: target.id,
+          name: target.name,
+          template: copied.template,
+          startDate: schedule.startDate,
+          slots: schedule.slots,
+          regenerate: false,
+        }),
+      });
+    }
+    data = await api("/api/table", {
+      method: "POST",
+      body: JSON.stringify({
+        id: target.id,
+        rows: copied.rowData,
+        template: copied.template,
+      }),
+    });
+  }
   replaceStudent(data.student);
   renderTable();
   setSaveStatus(`Таблица «${copied.sourceName}» вставлена ученику «${target.name}»`);
