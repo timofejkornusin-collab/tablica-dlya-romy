@@ -209,6 +209,7 @@
     inset: 0;
     z-index: 180;
     overflow: auto;
+    overflow-anchor: none;
     background: #f5f0e6;
     padding: 12px;
     padding-top: max(12px, env(safe-area-inset-top));

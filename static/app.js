@@ -978,47 +978,64 @@ function closePractice() {
   loadStudents().then(renderTable).catch((error) => setSaveStatus(error.message));
 }
 
-function capturePracticeScroll() {
+function capturePracticeScroll(taskN) {
+  const view = els.practiceView;
+  const card =
+    taskN != null && view ? view.querySelector(`.task-card[data-n="${taskN}"]`) : null;
   return {
     windowY: window.scrollY || window.pageYOffset || 0,
-    viewY: els.practiceView ? els.practiceView.scrollTop : 0,
+    viewY: view ? view.scrollTop : 0,
+    cardTop: card ? card.getBoundingClientRect().top : null,
+    taskN,
   };
 }
 
 function restorePracticeScroll(snapshot, taskN, role) {
+  const n = taskN != null ? taskN : snapshot && snapshot.taskN;
   const apply = () => {
-    if (snapshot) {
+    const view = els.practiceView;
+    if (!view) return;
+    const card = n != null ? view.querySelector(`.task-card[data-n="${n}"]`) : null;
+    if (card && snapshot && snapshot.cardTop != null) {
+      const delta = card.getBoundingClientRect().top - snapshot.cardTop;
+      if (Math.abs(delta) >= 1) {
+        view.scrollTop += delta;
+      }
+      const still = card.getBoundingClientRect().top - snapshot.cardTop;
+      if (Math.abs(still) >= 1) {
+        window.scrollBy(0, still);
+      }
+    } else if (snapshot) {
       window.scrollTo(0, snapshot.windowY);
-      if (els.practiceView) els.practiceView.scrollTop = snapshot.viewY;
+      view.scrollTop = snapshot.viewY;
     }
-    if (taskN == null || !els.practiceView) return;
-    const card = els.practiceView.querySelector(`.task-card[data-n="${taskN}"]`);
-    if (card) {
-      card.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
-    const input = role
-      ? els.practiceView.querySelector(`input[data-role="${role}"][data-n="${taskN}"]`)
-      : null;
+    const input =
+      role && n != null
+        ? view.querySelector(`input[data-role="${role}"][data-n="${n}"]`)
+        : null;
     if (input && !input.readOnly) {
       try {
         input.focus({ preventScroll: true });
       } catch (_error) {
-        input.focus();
+        /* не вызываем focus() без preventScroll — это снова уводит вверх */
       }
     }
   };
   apply();
+  queueMicrotask(apply);
   requestAnimationFrame(() => {
     apply();
     requestAnimationFrame(apply);
   });
+  setTimeout(apply, 0);
+  setTimeout(apply, 32);
 }
 
 async function openPractice(bankId, options = {}) {
   const student = currentStudent();
   if (!student || !bankId) return;
   const keepScroll = Boolean(options.keepScroll);
-  const snapshot = keepScroll ? capturePracticeScroll() : null;
+  const snapshot = keepScroll ? capturePracticeScroll(options.focusN) : null;
   hideRowConfirm();
   hideFindDialog();
   const asStudent = isStudentView() ? "&asStudent=1" : "";
