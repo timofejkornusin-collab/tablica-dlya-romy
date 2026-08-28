@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import hmac
 import json
@@ -169,6 +170,12 @@ def atomic_write(path: Path, payload: dict, pretty: bool = False) -> None:
         text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     else:
         text = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+    if path.exists():
+        try:
+            if path.read_text(encoding="utf-8") == text:
+                return
+        except OSError:
+            pass
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)
 
@@ -222,11 +229,10 @@ def _load_journal() -> dict:
     for item in meta.get("students") or []:
         if not isinstance(item, dict) or not item.get("id"):
             continue
-        safe = safe_student_file_id(str(item["id"]))
-        body = load_json(JOURNAL_DIR / f"{safe}.json", {}) if safe else {}
         merged = dict(item)
-        merged["rows"] = body.get("rows") if isinstance(body.get("rows"), list) else []
-        merged["progress"] = body.get("progress") if isinstance(body.get("progress"), dict) else {}
+        merged.pop("rows", None)
+        merged.pop("progress", None)
+        merged["_rowsLoaded"] = False
         students.append(merged)
     return {"students": students}
 
@@ -243,6 +249,13 @@ def load_data() -> dict:
         loaded = raw if isinstance(raw.get("students"), list) else default_data()
     else:
         loaded = default_data()
+    for student in loaded.get("students") or []:
+        if not isinstance(student, dict):
+            continue
+        if "rows" in student:
+            student["_rowsLoaded"] = True
+        else:
+            student["_rowsLoaded"] = False
     _DATA_CACHE = loaded
     return loaded
 
@@ -270,6 +283,7 @@ def save_data(data: dict, changed_ids: str | list[str] | set[str] | None = None)
         live_ids.add(safe)
         meta_students.append(student_meta(student))
         if wanted is None or sid in wanted or safe in wanted:
+            ensure_student_body(student)
             atomic_write(
                 JOURNAL_DIR / f"{safe}.json",
                 {
@@ -332,13 +346,31 @@ def migrate_students() -> list[str]:
 
 
 def public_student(student: dict | None) -> dict | None:
-    return journal.public_student(student)
+    return journal.public_student(ensure_student_body(student) if student else None)
+
+
+def ensure_student_body(student: dict | None) -> dict | None:
+    if not student:
+        return None
+    if student.get("_rowsLoaded"):
+        return student
+    if isinstance(student.get("rows"), list):
+        student["_rowsLoaded"] = True
+        if not isinstance(student.get("progress"), dict):
+            student["progress"] = {}
+        return student
+    safe = safe_student_file_id(str(student.get("id") or ""))
+    body = load_json(JOURNAL_DIR / f"{safe}.json", {}) if safe else {}
+    student["rows"] = body.get("rows") if isinstance(body.get("rows"), list) else []
+    student["progress"] = body.get("progress") if isinstance(body.get("progress"), dict) else {}
+    student["_rowsLoaded"] = True
+    return student
 
 
 def find_student(data: dict, student_id: str) -> dict | None:
     for student in data["students"]:
         if isinstance(student, dict) and student.get("id") == student_id:
-            return student
+            return ensure_student_body(student)
     return None
 
 
@@ -791,7 +823,7 @@ class Handler(SimpleHTTPRequestHandler):
         path = ""
         if args:
             path = str(args[0])
-        if "/api/session" in path or "/api/table" in path:
+        if "/api/session" in path or "/api/table" in path or "/api/students" in path:
             return
         sys.stderr.write("%s - %s\n" % (self.address_string(), format % args))
 
@@ -801,13 +833,30 @@ class Handler(SimpleHTTPRequestHandler):
             return f"{ctype}; charset=utf-8"
         return ctype
 
+    def end_headers(self):
+        raw = self.path or ""
+        path = unquote(raw.split("?", 1)[0])
+        versioned = "?" in raw
+        if versioned and not path.startswith("/api/"):
+            suffix = Path(path).suffix.lower()
+            if suffix in {".css", ".js", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico", ".woff2", ".woff"}:
+                self.send_header("Cache-Control", "private, max-age=86400")
+        super().end_headers()
+
     def _send_json(self, payload: dict, status: int = 200, cookie: str | None = None) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        accept = (self.headers.get("Accept-Encoding") or "").lower()
+        use_gzip = len(body) > 800 and "gzip" in accept
+        if use_gzip:
+            body = gzip.compress(body, compresslevel=1)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "close")
+        if use_gzip:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
         if cookie:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
@@ -1087,6 +1136,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "password_salt": salt,
                 "password_hash": digest,
                 "password_is_initial": False,
+                "_rowsLoaded": True,
             }
             start = journal.parse_iso_date(str(payload.get("startDate") or ""))
             slots = journal.clean_slots(payload.get("slots"), template)

@@ -43,6 +43,7 @@ const state = {
   localTeacher: false,
   pendingNewStudent: false,
   loadingTableId: null,
+  tableDirty: false,
 };
 
 const els = {
@@ -296,6 +297,7 @@ async function deleteLessonAt(index) {
   fresh.rows.splice(index, 1);
   if (!fresh.rows.length) fresh.rows.push(emptyRow());
   setSaveStatus("Строка удалена");
+  state.tableDirty = true;
   await persistCurrent();
   renderTable();
 }
@@ -445,6 +447,7 @@ function showTableShell(student) {
 
 async function openStudentTable(id, preview) {
   if (!id) return;
+  unloadIdleTables(id);
   const summary = state.students.find((item) => item.id === id) || { id };
   state.previewAsStudent = Boolean(preview);
   state.currentId = id;
@@ -549,22 +552,30 @@ async function persistCurrent() {
   const run = async () => {
     const student = currentStudent();
     if (!student || !isTeacherUi() || !student.tableReady) return;
-    setSaveStatus("Сохранение…");
-    await api("/api/table", {
-      method: "POST",
-      body: JSON.stringify({
-        id: student.id,
-        rows: student.rows,
-        template: student.template,
-      }),
-    });
-    setSaveStatus("Сохранено");
+    if (!state.tableDirty) return;
+    state.tableDirty = false;
+    try {
+      setSaveStatus("Сохранение…");
+      await api("/api/table", {
+        method: "POST",
+        body: JSON.stringify({
+          id: student.id,
+          rows: student.rows,
+          template: student.template,
+        }),
+      });
+      setSaveStatus("Сохранено");
+    } catch (error) {
+      state.tableDirty = true;
+      throw error;
+    }
   };
   saveChain = saveChain.then(run, run);
   return saveChain;
 }
 
 function scheduleSave() {
+  state.tableDirty = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     persistCurrent()
@@ -1154,6 +1165,25 @@ function renderMaterialCell(row, rowIndex, column) {
   </td>`;
 }
 
+function unloadIdleTables(keepId) {
+  state.students.forEach((student) => {
+    if (!student || !student.tableReady) return;
+    if (keepId && student.id === keepId) return;
+    student.tableReady = false;
+    delete student.rows;
+  });
+}
+
+async function goToStudentList() {
+  try {
+    await persistCurrent();
+  } catch (error) {
+    setSaveStatus(friendlyNetworkError(error).message);
+  }
+  unloadIdleTables(state.currentId);
+  renderList();
+}
+
 function replaceStudent(student) {
   if (!student || !student.id) return;
   const index = state.students.findIndex((item) => item.id === student.id);
@@ -1205,7 +1235,7 @@ els.backBtn.addEventListener("click", () => {
     closePractice();
     return;
   }
-  renderList();
+  goToStudentList();
 });
 els.templateSelect.addEventListener("change", () => {
   const student = currentStudent();
@@ -1429,6 +1459,7 @@ els.tableView.addEventListener("change", (event) => {
   if (!row) return;
   row.bankId = select.value;
   row.importedSource = select.value ? `manual:${select.value}` : "";
+  state.tableDirty = true;
   persistCurrent()
     .then(() => renderTable())
     .catch((error) => setSaveStatus(error.message));

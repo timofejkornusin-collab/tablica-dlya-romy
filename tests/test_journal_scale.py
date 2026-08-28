@@ -122,7 +122,21 @@ class JournalStoreTests(unittest.TestCase):
         server._DATA_CACHE = None
         loaded = server.load_data()
         self.assertEqual(loaded["students"][0]["name"], "Ученик 0")
-        self.assertEqual(len(loaded["students"][0]["rows"]), 8)
+        self.assertFalse(loaded["students"][0].get("_rowsLoaded"))
+        self.assertNotIn("rows", loaded["students"][0])
+        student = server.find_student(loaded, "student-000")
+        self.assertEqual(len(student["rows"]), 8)
+
+    def test_list_load_does_not_read_all_tables(self):
+        data = {"students": [filled_student(i, lessons=12) for i in range(8)]}
+        server.save_data(data)
+        server._DATA_CACHE = None
+        loaded = server.load_data()
+        self.assertEqual(len(loaded["students"]), 8)
+        self.assertTrue(all(not item.get("_rowsLoaded") for item in loaded["students"]))
+        first = server.find_student(loaded, "student-000")
+        self.assertTrue(first["_rowsLoaded"])
+        self.assertFalse(loaded["students"][1].get("_rowsLoaded"))
 
     def test_legacy_students_json_still_loads(self):
         payload = {"students": [filled_student(7, lessons=3)]}
