@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Safe production update: preserves the customized index.html and server.py.
+#
+# If this file was copied from Windows, bash will fail with `$'\r': command not found`.
+# In that case run the Python installer instead — python3 accepts CRLF:
+#   python3 /tmp/journal-release/tools/deploy-production.py
 
 set -u
+
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+if [ -f "$HERE/deploy-production.py" ]; then
+  exec python3 "$HERE/deploy-production.py" "$@"
+fi
 
 STAGE="/tmp/journal-release"
 APP_ROOT="/var/www/journal"
