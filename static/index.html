@@ -114,10 +114,14 @@
               </label>
             </fieldset>
             <fieldset>
-              <legend>День и время — даты встанут до мая</legend>
+              <legend>День и время — даты встанут до последнего занятия</legend>
               <label>
                 Дата первого занятия
                 <input id="start-date" type="date" name="startDate" required />
+              </label>
+              <label id="end-date-field">
+                Дата последнего занятия
+                <input id="end-date" type="date" name="endDate" required />
               </label>
               <label>
                 День недели
@@ -209,7 +213,7 @@
       </form>
     </div>
 
-    <script src="app.js?v=theory-keys1"></script>
+    <script src="app.js?v=end-date1"></script>
     <script src="find-date.js?v=2"></script>
     <script src="practice-page.js?v=2"></script>
     <script src="practice-scales.js?v=2"></script>

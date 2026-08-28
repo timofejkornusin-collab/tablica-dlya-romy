@@ -70,6 +70,7 @@ class LessonStatusTest(unittest.TestCase):
         )
 
         self.assertEqual(student["schedule"]["startDate"], "2026-10-01")
+        self.assertEqual(student["schedule"]["endDate"], "2027-05-27")
         self.assertEqual(student["rows"][0]["date"], "01.10.2026, 17:00")
         self.assertEqual(student["rows"][0]["topic"], "Тема 1")
         self.assertEqual(student["rows"][1]["date"], "08.10.2026, 17:00")
@@ -91,6 +92,81 @@ class LessonStatusTest(unittest.TestCase):
 
         self.assertEqual(student["rows"][0]["date"], "10.09.2026, 16:00")
         self.assertEqual(student["rows"][0]["topic"], "Вторая")
+
+
+class ScheduleEndDateTest(unittest.TestCase):
+    def test_default_range_still_stops_in_may(self) -> None:
+        slots = [{"weekday": 3, "time": "16:00"}]
+        dates = journal.generate_lesson_dates(date(2026, 9, 3), slots)
+        self.assertEqual(dates[0], "03.09.2026, 16:00")
+        self.assertEqual(dates[-1], "27.05.2027, 16:00")
+        self.assertNotIn("03.06.2027, 16:00", dates)
+        self.assertEqual(journal.default_schedule_end(date(2026, 9, 3), slots), date(2027, 5, 27))
+
+    def test_june_end_includes_june_lessons(self) -> None:
+        slots = [{"weekday": 3, "time": "16:00"}]
+        dates = journal.generate_lesson_dates(date(2026, 9, 3), slots, date(2027, 6, 10))
+        self.assertIn("27.05.2027, 16:00", dates)
+        self.assertIn("03.06.2027, 16:00", dates)
+        self.assertIn("10.06.2027, 16:00", dates)
+        self.assertNotIn("17.06.2027, 16:00", dates)
+        self.assertEqual(dates[-1], "10.06.2027, 16:00")
+
+    def test_two_year_end_keeps_tenth_grade_lessons(self) -> None:
+        slots = [{"weekday": 3, "time": "16:00"}]
+        dates = journal.generate_lesson_dates(date(2026, 9, 3), slots, date(2028, 5, 25))
+        self.assertIn("03.09.2026, 16:00", dates)
+        self.assertIn("02.09.2027, 16:00", dates)
+        self.assertEqual(dates[-1], "25.05.2028, 16:00")
+        years = {item.split(",")[0].split(".")[-1] for item in dates}
+        self.assertEqual(years, {"2026", "2027", "2028"})
+
+    def test_end_before_start_is_rejected(self) -> None:
+        slots = [{"weekday": 3, "time": "16:00"}]
+        self.assertEqual(journal.generate_lesson_dates(date(2026, 9, 3), slots, date(2026, 8, 1)), [])
+        end, error = journal.resolve_schedule_end(date(2026, 9, 3), slots, date(2026, 8, 1))
+        self.assertEqual(end, date(2026, 8, 1))
+        self.assertIn("раньше первого", error)
+
+    def test_apply_schedule_stores_custom_end_date(self) -> None:
+        student = {"rows": []}
+        journal.apply_schedule(
+            student,
+            date(2026, 9, 3),
+            [{"weekday": 3, "time": "16:00"}],
+            "once",
+            date(2027, 6, 10),
+        )
+        self.assertEqual(student["schedule"]["endDate"], "2027-06-10")
+        self.assertEqual(student["rows"][-1]["date"], "10.06.2027, 16:00")
+
+    def test_missing_end_date_uses_existing_or_may(self) -> None:
+        end, error = journal.resolve_schedule_end(
+            date(2026, 9, 3),
+            [{"weekday": 3, "time": "16:00"}],
+            None,
+            date(2027, 6, 15),
+        )
+        self.assertEqual(error, "")
+        self.assertEqual(end, date(2027, 6, 15))
+
+        default_end, default_error = journal.resolve_schedule_end(
+            date(2026, 9, 3),
+            [{"weekday": 3, "time": "16:00"}],
+        )
+        self.assertEqual(default_error, "")
+        self.assertEqual(default_end, date(2027, 5, 27))
+
+    def test_form_has_last_lesson_date_field(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        index_html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("ensureEndDateField", app_js)
+        self.assertIn("fillEndDateValue", app_js)
+        self.assertIn("defaultEndDateForStart", app_js)
+        self.assertIn('id="end-date"', index_html)
+        self.assertIn("Дата последнего занятия", index_html)
+        self.assertIn("даты встанут до последнего занятия", index_html)
+        self.assertNotIn("даты встанут до мая", index_html)
 
 
 class TableCopyTest(unittest.TestCase):

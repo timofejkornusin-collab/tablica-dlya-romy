@@ -67,6 +67,59 @@ def school_year_may(start: date) -> int:
     return start.year
 
 
+MAX_SCHEDULE_DAYS = 366 * 4
+
+
+def default_schedule_end(start: date, slots: list[dict] | None = None) -> date:
+    """Last lesson day of the school year in May for the given weekdays."""
+    items = [item for item in (slots or []) if isinstance(item, dict)]
+    year = school_year_may(start)
+    weekdays = []
+    for item in items:
+        try:
+            weekday = int(item.get("weekday"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if 0 <= weekday <= 6 and weekday not in weekdays:
+            weekdays.append(weekday)
+    if not weekdays:
+        weekdays.append(start.weekday())
+    return max(last_weekday_in_may(year, weekday) for weekday in weekdays)
+
+
+def parse_end_date_value(value) -> tuple[date | None, str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None, ""
+    parsed = parse_iso_date(raw)
+    if not parsed:
+        return None, "Укажите дату последнего занятия"
+    return parsed, ""
+
+
+def schedule_end_error(start: date, end: date) -> str:
+    if end < start:
+        return "Дата последнего занятия не может быть раньше первого"
+    if (end - start).days > MAX_SCHEDULE_DAYS:
+        return "Слишком длинный период: не больше четырёх лет"
+    return ""
+
+
+def resolve_schedule_end(
+    start: date,
+    slots: list[dict] | None = None,
+    requested: date | None = None,
+    fallback: date | None = None,
+) -> tuple[date, str]:
+    if requested is not None:
+        end = requested
+    elif fallback is not None and fallback >= start:
+        end = fallback
+    else:
+        end = default_schedule_end(start, slots)
+    return end, schedule_end_error(start, end)
+
+
 def parse_iso_date(value: str) -> date | None:
     raw = str(value or "").strip()[:10]
     for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
@@ -109,15 +162,19 @@ def clean_slots(raw_slots, template: str) -> list[dict]:
     return slots
 
 
-def generate_lesson_dates(start: date, slots: list[dict]) -> list[str]:
+def generate_lesson_dates(start: date, slots: list[dict], end: date | None = None) -> list[str]:
     if not slots:
         return []
     times = {item["weekday"]: item["time"] for item in slots}
-    year = school_year_may(start)
-    end = max(last_weekday_in_may(year, item["weekday"]) for item in slots)
+    stop = end if end is not None else default_schedule_end(start, slots)
+    limit = start + timedelta(days=MAX_SCHEDULE_DAYS)
+    if stop > limit:
+        stop = limit
+    if stop < start:
+        return []
     cursor = start
     result = []
-    while cursor <= end:
+    while cursor <= stop:
         if cursor.weekday() in times:
             result.append(f"{cursor.strftime('%d.%m.%Y')}, {times[cursor.weekday()]}")
         cursor += timedelta(days=1)
@@ -130,8 +187,15 @@ def row_date_key(row: dict | None) -> str:
     return str(row.get("date") or "").split(",")[0].strip()
 
 
-def apply_schedule(student: dict, start: date, slots: list[dict], template: str) -> None:
-    dates = generate_lesson_dates(start, slots)
+def apply_schedule(
+    student: dict,
+    start: date,
+    slots: list[dict],
+    template: str,
+    end: date | None = None,
+) -> None:
+    resolved = end if end is not None else default_schedule_end(start, slots)
+    dates = generate_lesson_dates(start, slots, resolved)
     old_rows = [row for row in student.get("rows") or [] if isinstance(row, dict)]
     old_by_date = {}
     for row in old_rows:
@@ -165,6 +229,7 @@ def apply_schedule(student: dict, start: date, slots: list[dict], template: str)
     student["template"] = template
     student["schedule"] = {
         "startDate": start.isoformat(),
+        "endDate": resolved.isoformat(),
         "slots": slots,
     }
 

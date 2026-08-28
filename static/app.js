@@ -69,6 +69,32 @@ function ensureTableCopyButtons() {
 
 ensureTableCopyButtons();
 
+function ensureEndDateField() {
+  const start = document.getElementById("start-date");
+  if (!document.getElementById("end-date") && start) {
+    const startLabel = start.closest("label");
+    const label = document.createElement("label");
+    label.id = "end-date-field";
+    label.appendChild(document.createTextNode("Дата последнего занятия"));
+    const input = document.createElement("input");
+    input.id = "end-date";
+    input.type = "date";
+    input.name = "endDate";
+    input.required = true;
+    label.appendChild(input);
+    if (startLabel && startLabel.parentNode) {
+      startLabel.parentNode.insertBefore(label, startLabel.nextSibling);
+    }
+  }
+  const fieldset = start && start.closest("fieldset");
+  const legend = fieldset && fieldset.querySelector("legend");
+  if (legend) {
+    legend.textContent = "День и время — даты встанут до последнего занятия";
+  }
+}
+
+ensureEndDateField();
+
 const state = {
   students: [],
   banks: [],
@@ -139,6 +165,7 @@ const els = {
   studentForm: document.getElementById("student-form"),
   studentName: document.getElementById("student-name"),
   startDate: document.getElementById("start-date"),
+  endDate: document.getElementById("end-date"),
   weekday0: document.getElementById("weekday-0"),
   weekday1: document.getElementById("weekday-1"),
   time0: document.getElementById("time-0"),
@@ -600,6 +627,129 @@ function showCreatedAccess(name, login, password, lead) {
   els.createdBox.classList.remove("hidden");
 }
 
+function parseIsoDateValue(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+function formatIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addCalendarYears(value, years) {
+  const date = parseIsoDateValue(value);
+  if (!date) return "";
+  const month = date.getMonth();
+  date.setFullYear(date.getFullYear() + years);
+  if (date.getMonth() !== month) {
+    date.setDate(0);
+  }
+  return formatIsoDate(date);
+}
+
+function schoolYearMay(date) {
+  return date.getMonth() + 1 >= 6 ? date.getFullYear() + 1 : date.getFullYear();
+}
+
+function lastWeekdayInMay(year, weekday) {
+  const date = new Date(year, 4, 31, 12, 0, 0);
+  while ((date.getDay() + 6) % 7 !== weekday) {
+    date.setDate(date.getDate() - 1);
+  }
+  return date;
+}
+
+function defaultEndDateForStart(startValue, slots) {
+  const start = parseIsoDateValue(startValue);
+  if (!start) return "";
+  const year = schoolYearMay(start);
+  const weekdays = [];
+  if (Array.isArray(slots)) {
+    slots.forEach((item) => {
+      const weekday = Number(item && item.weekday);
+      if (Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 && !weekdays.includes(weekday)) {
+        weekdays.push(weekday);
+      }
+    });
+  }
+  if (!weekdays.length) {
+    weekdays.push((start.getDay() + 6) % 7);
+  }
+  let end = null;
+  weekdays.forEach((weekday) => {
+    const candidate = lastWeekdayInMay(year, weekday);
+    if (!end || candidate > end) end = candidate;
+  });
+  return end ? formatIsoDate(end) : "";
+}
+
+function dmyToIso(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return "";
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+function lastRowIsoDate(student) {
+  let last = "";
+  const rows = student && Array.isArray(student.rows) ? student.rows : [];
+  rows.forEach((row) => {
+    const iso = dmyToIso(String((row && row.date) || "").split(",")[0]);
+    if (iso && iso > last) last = iso;
+  });
+  return last;
+}
+
+function formSlotsForEndDate() {
+  const slots = [{ weekday: Number(els.weekday0 ? els.weekday0.value : 3) }];
+  if (els.studentForm && els.studentForm.template && els.studentForm.template.value === "twice") {
+    slots.push({ weekday: Number(els.weekday1 ? els.weekday1.value : 1) });
+  }
+  return slots;
+}
+
+function syncEndDateLimits() {
+  if (!els.endDate || !els.startDate || !els.startDate.value) return;
+  els.endDate.min = els.startDate.value;
+  const max = addCalendarYears(els.startDate.value, 4);
+  if (max) els.endDate.max = max;
+}
+
+function toDateInputValue(value) {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return dmyToIso(raw);
+}
+
+function fillEndDateValue(student) {
+  if (!els.endDate || !els.startDate) return;
+  syncEndDateLimits();
+  const startValue = els.startDate.value;
+  const schedule = (student && student.schedule) || {};
+  const stored = toDateInputValue(schedule.endDate);
+  if (stored && (!startValue || stored >= startValue)) {
+    els.endDate.value = stored;
+    return;
+  }
+  const computed = defaultEndDateForStart(startValue, formSlotsForEndDate());
+  const lastLesson = lastRowIsoDate(student);
+  els.endDate.value = lastLesson && lastLesson > computed ? lastLesson : computed;
+}
+
 function collectCreateSlots() {
   syncStartDateWeekday();
   const template = els.studentForm.template.value === "twice" ? "twice" : "once";
@@ -609,7 +759,12 @@ function collectCreateSlots() {
   if (template === "twice") {
     slots.push({ weekday: Number(els.weekday1.value), time: els.time1.value || "16:00" });
   }
-  return { template, slots, startDate: els.startDate ? els.startDate.value : "" };
+  return {
+    template,
+    slots,
+    startDate: els.startDate ? els.startDate.value : "",
+    endDate: els.endDate ? els.endDate.value : "",
+  };
 }
 
 function syncStartDateWeekday() {
@@ -819,6 +974,7 @@ async function pasteCopiedTable() {
             name: target.name,
             template: copied.template,
             startDate: schedule.startDate,
+            endDate: schedule.endDate || "",
             slots: schedule.slots,
             regenerate: false,
           }),
@@ -873,6 +1029,7 @@ function fillStudentForm(student) {
   els.weekday1.value = String(slots[1] ? slots[1].weekday : 1);
   els.time1.value = (slots[1] && slots[1].time) || "16:00";
   toggleSecondSlot();
+  fillEndDateValue(student);
 }
 
 function openModal() {
@@ -950,7 +1107,7 @@ function renderList() {
     els.listView.innerHTML = `
       <div class="empty-state">
         <p>Пока нет учеников.</p>
-        <p>Добавьте ученика, укажите день и время — даты встанут до последнего такого дня в мае.</p>
+        <p>Добавьте ученика, укажите день, время и дату последнего занятия.</p>
       </div>
     `;
     return;
@@ -1604,7 +1761,16 @@ els.studentForm.addEventListener("change", (event) => {
   if (event.target.name === "template") toggleSecondSlot();
 });
 if (els.startDate) {
-  const onStartDateChange = () => syncStartDateWeekday();
+  const onStartDateChange = () => {
+    syncStartDateWeekday();
+    if (!els.endDate) return;
+    syncEndDateLimits();
+    const startValue = els.startDate.value;
+    if (!startValue) return;
+    if (!els.endDate.value || els.endDate.value < startValue) {
+      els.endDate.value = defaultEndDateForStart(startValue, formSlotsForEndDate());
+    }
+  };
   els.startDate.addEventListener("change", onStartDateChange);
   els.startDate.addEventListener("input", onStartDateChange);
 }
@@ -1692,7 +1858,11 @@ els.studentForm.addEventListener("submit", async (event) => {
     els.modalError.textContent = "Нужно имя ученика";
     return;
   }
-  const { template, slots, startDate } = collectCreateSlots();
+  const { template, slots, startDate, endDate } = collectCreateSlots();
+  if (startDate && endDate && endDate < startDate) {
+    els.modalError.textContent = "Дата последнего занятия не может быть раньше первого";
+    return;
+  }
   try {
     if (state.settingsStudentId) {
       clearTimeout(saveTimer);
@@ -1705,6 +1875,7 @@ els.studentForm.addEventListener("submit", async (event) => {
           name,
           template,
           startDate,
+          endDate,
           slots,
           regenerate: true,
         }),
@@ -1718,7 +1889,7 @@ els.studentForm.addEventListener("submit", async (event) => {
     }
     const data = await api("/api/students", {
       method: "POST",
-      body: JSON.stringify({ name, template, startDate, slots }),
+      body: JSON.stringify({ name, template, startDate, endDate, slots }),
     });
     state.students.push(data.student);
     state.currentId = data.student.id;

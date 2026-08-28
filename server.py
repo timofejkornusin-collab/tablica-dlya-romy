@@ -993,6 +993,18 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"ok": False, "error": "Нужно имя ученика"}, 400)
             return
         login = login.replace(" ", "")
+        start = journal.parse_iso_date(str(payload.get("startDate") or ""))
+        slots = journal.clean_slots(payload.get("slots"), template)
+        requested_end, end_error = journal.parse_end_date_value(payload.get("endDate"))
+        if end_error:
+            self._send_json({"ok": False, "error": end_error}, 400)
+            return
+        end = None
+        if start and slots:
+            end, span_error = journal.resolve_schedule_end(start, slots, requested_end)
+            if span_error:
+                self._send_json({"ok": False, "error": span_error}, 400)
+                return
         with DATA_LOCK:
             base = login
             suffix = 2
@@ -1011,10 +1023,8 @@ class Handler(SimpleHTTPRequestHandler):
                 "password_hash": digest,
                 "password_is_initial": False,
             }
-            start = journal.parse_iso_date(str(payload.get("startDate") or ""))
-            slots = journal.clean_slots(payload.get("slots"), template)
             if start and slots:
-                journal.apply_schedule(student, start, slots, template)
+                journal.apply_schedule(student, start, slots, template, end)
             data = load_data()
             data["students"].append(student)
             save_data(data)
@@ -1160,6 +1170,10 @@ class Handler(SimpleHTTPRequestHandler):
         start = journal.parse_iso_date(str(payload.get("startDate") or ""))
         template = "twice" if payload.get("template") == "twice" else "once"
         slots = journal.clean_slots(payload.get("slots"), template)
+        requested_end, end_error = journal.parse_end_date_value(payload.get("endDate"))
+        if end_error:
+            self._send_json({"ok": False, "error": end_error}, 400)
+            return
         if not start:
             self._send_json({"ok": False, "error": "Укажите дату первого занятия"}, 400)
             return
@@ -1175,16 +1189,22 @@ class Handler(SimpleHTTPRequestHandler):
             if not student:
                 self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
                 return
+            fallback_end = journal.parse_iso_date(str((student.get("schedule") or {}).get("endDate") or ""))
+            end, span_error = journal.resolve_schedule_end(start, slots, requested_end, fallback_end)
+            if span_error:
+                self._send_json({"ok": False, "error": span_error}, 400)
+                return
             student["template"] = template
             name = str(payload.get("name") or "").strip()
             if name:
                 student["name"] = name
             student["schedule"] = {
                 "startDate": start.isoformat(),
+                "endDate": end.isoformat(),
                 "slots": slots,
             }
             if payload.get("regenerate", True):
-                journal.apply_schedule(student, start, slots, template)
+                journal.apply_schedule(student, start, slots, template, end)
             save_data(data)
             saved = public_student(student)
         self._send_json({"ok": True, "student": saved})

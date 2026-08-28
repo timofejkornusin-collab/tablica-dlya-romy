@@ -27,6 +27,7 @@ class PracticeScrollTest(unittest.TestCase):
         self.assertIn("applyCopiedRow", app_js)
         self.assertIn("row-copy-btn", app_js)
         self.assertIn("importLinkedPdfs", app_js)
+        self.assertIn("ensureEndDateField", app_js)
 
         self.assertNotIn("scrollTop = 0", page_js)
         self.assertNotIn("view.scrollTop = 0", page_js)
