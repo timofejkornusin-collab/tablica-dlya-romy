@@ -42,6 +42,7 @@ const state = {
   revealedRowIndex: null,
   localTeacher: false,
   pendingNewStudent: false,
+  loadingTableId: null,
 };
 
 const els = {
@@ -262,7 +263,7 @@ function showRowConfirm(rowIndex) {
 
 function insertLessonAt(index) {
   const student = currentStudent();
-  if (!student || !isTeacherUi()) return;
+  if (!student || !isTeacherUi() || !student.tableReady) return;
   hideRowConfirm();
   const at = Math.max(0, Math.min(Number(index) || 0, student.rows.length));
   student.rows.splice(at, 0, emptyRow());
@@ -302,9 +303,7 @@ async function deleteLessonAt(index) {
 function enterStudentPreview(studentId) {
   if (!isTeacherAccount() || !studentId) return;
   hideRowConfirm();
-  state.previewAsStudent = true;
-  state.currentId = studentId;
-  renderTable();
+  openStudentTable(studentId, true);
 }
 
 function exitStudentPreview() {
@@ -400,7 +399,75 @@ async function loadSession() {
 
 async function loadStudents() {
   const data = await api("/api/students");
-  state.students = Array.isArray(data.students) ? data.students : [];
+  const incoming = Array.isArray(data.students) ? data.students : [];
+  const prevById = new Map(state.students.map((item) => [item.id, item]));
+  state.students = incoming.map((item) => {
+    if (item.tableReady) return item;
+    const prev = prevById.get(item.id);
+    if (prev && prev.tableReady) {
+      return { ...item, rows: prev.rows, tableReady: true };
+    }
+    return item;
+  });
+}
+
+async function loadStudentTable(id) {
+  if (!id) return null;
+  const data = await api(`/api/students?id=${encodeURIComponent(id)}`);
+  const student = (data.students || [])[0] || null;
+  if (student) replaceStudent(student);
+  return student;
+}
+
+function showTableShell(student) {
+  document.body.classList.remove("practice-open");
+  state.view = "table";
+  els.listView.classList.add("hidden");
+  els.practiceView.classList.add("hidden");
+  els.tableView.classList.remove("hidden");
+  els.backBtn.classList.toggle("hidden", isStudentView());
+  els.backBtn.textContent = "← К списку";
+  els.tableActions.classList.remove("hidden");
+  els.addStudentBtn.classList.add("hidden");
+  els.templateWrap.classList.add("hidden");
+  if (els.findWrap) els.findWrap.classList.remove("hidden");
+  if (els.settingsBtn) els.settingsBtn.classList.toggle("hidden", !isTeacherUi());
+  els.pageTitle.textContent = (student && student.name) || "Таблица";
+  els.pageSubtitle.textContent = "Загружаю таблицу…";
+  updateModeChrome();
+  updateShareBar();
+  els.tableView.innerHTML = `
+    <div class="empty-state">
+      <p>Загружаю таблицу…</p>
+    </div>
+  `;
+}
+
+async function openStudentTable(id, preview) {
+  if (!id) return;
+  const summary = state.students.find((item) => item.id === id) || { id };
+  state.previewAsStudent = Boolean(preview);
+  state.currentId = id;
+  state.revealedRowIndex = null;
+  if (summary.tableReady) {
+    state.loadingTableId = null;
+    renderTable();
+    return;
+  }
+  if (state.loadingTableId === id && state.view === "table") return;
+  state.loadingTableId = id;
+  showTableShell(summary);
+  setSaveStatus("Загружаю таблицу…");
+  try {
+    await loadStudentTable(id);
+    if (state.currentId !== id) return;
+    state.loadingTableId = null;
+    setSaveStatus("");
+    renderTable();
+  } catch (error) {
+    if (state.loadingTableId === id) state.loadingTableId = null;
+    setSaveStatus(friendlyNetworkError(error).message);
+  }
 }
 
 async function loadBanks() {
@@ -481,7 +548,7 @@ function collectCreateSlots() {
 async function persistCurrent() {
   const run = async () => {
     const student = currentStudent();
-    if (!student || !isTeacherUi()) return;
+    if (!student || !isTeacherUi() || !student.tableReady) return;
     setSaveStatus("Сохранение…");
     await api("/api/table", {
       method: "POST",
@@ -586,6 +653,7 @@ function renderList() {
   state.currentId = null;
   state.previewAsStudent = false;
   state.revealedRowIndex = null;
+  state.loadingTableId = null;
   els.listView.classList.remove("hidden");
   els.tableView.classList.add("hidden");
   els.practiceView.classList.add("hidden");
@@ -651,6 +719,25 @@ function bankOptions(selected) {
     .join("")}`;
 }
 
+function compactBankOptions(selected) {
+  if (!selected) return `<option value="" selected>— нет —</option>`;
+  const items = state.banks.length ? state.banks : [{ id: "ege-10", title: "Задание 10 ЕГЭ" }];
+  const bank = items.find((item) => item.id === selected);
+  const student = currentStudent();
+  const row = student && (student.rows || []).find((item) => item.bankId === selected);
+  const title = (bank && bank.title) || (row && row.bankTitle) || selected;
+  return `<option value="">— нет —</option><option value="${escapeHtml(selected)}" selected>${escapeHtml(
+    title
+  )}</option>`;
+}
+
+function bankSelectHtml(rowIndex, selected) {
+  const heavy = state.banks.length > 12;
+  const options = heavy ? compactBankOptions(selected) : bankOptions(selected);
+  const lazy = heavy ? ' data-lazy-banks="1"' : "";
+  return `<select data-row="${rowIndex}" data-role="bank"${lazy}>${options}</select>`;
+}
+
 function rowHasLessonContent(row) {
   if (!row || typeof row !== "object") return false;
   if (["topic", "theory", "homework", "comment"].some((key) => String(row[key] || "").trim())) {
@@ -691,6 +778,11 @@ function renderTable() {
   const student = currentStudent();
   if (!student) {
     if (isTeacherAccount()) renderList();
+    return;
+  }
+  if (!student.tableReady) {
+    if (state.loadingTableId === student.id) return;
+    openStudentTable(student.id, state.previewAsStudent);
     return;
   }
   if (!isTeacherUi()) hideRowConfirm();
@@ -750,7 +842,7 @@ function renderTable() {
         if (column.key === "practice") {
           const fraction = row.bankId ? row.practice || "0/0" : "—";
           const teacherSelect = isTeacherUi()
-            ? `<select data-row="${rowIndex}" data-role="bank">${bankOptions(row.bankId || "")}</select>`
+            ? bankSelectHtml(rowIndex, row.bankId || "")
             : "";
           const attach = isTeacherUi()
             ? `<label class="file-corner" title="Загрузить PDF с заданиями">
@@ -817,7 +909,12 @@ function renderTable() {
 
 function closePractice() {
   document.body.classList.remove("practice-open");
-  loadStudents().then(renderTable).catch((error) => setSaveStatus(error.message));
+  const id = state.currentId;
+  loadStudentTable(id)
+    .then(() => {
+      if (state.currentId === id) renderTable();
+    })
+    .catch((error) => setSaveStatus(error.message));
 }
 
 async function openPractice(bankId) {
@@ -1061,6 +1158,7 @@ function replaceStudent(student) {
   if (!student || !student.id) return;
   const index = state.students.findIndex((item) => item.id === student.id);
   if (index >= 0) state.students[index] = student;
+  else state.students.push(student);
 }
 
 function afterLogin() {
@@ -1252,10 +1350,24 @@ els.listView.addEventListener("click", async (event) => {
     return;
   }
   if (event.target.closest(".open-table")) {
-    state.previewAsStudent = false;
-    state.currentId = id;
-    renderTable();
+    openStudentTable(id, false);
   }
+});
+
+function fillBankSelect(select) {
+  if (!select || select.dataset.lazyReady === "1") return;
+  const selected = select.value;
+  select.innerHTML = bankOptions(selected);
+  select.value = selected;
+  select.dataset.lazyReady = "1";
+}
+
+els.tableView.addEventListener("pointerdown", (event) => {
+  fillBankSelect(event.target.closest("select[data-role='bank'][data-lazy-banks]"));
+});
+
+els.tableView.addEventListener("focusin", (event) => {
+  fillBankSelect(event.target.closest("select[data-role='bank'][data-lazy-banks]"));
 });
 
 els.tableView.addEventListener("input", (event) => {

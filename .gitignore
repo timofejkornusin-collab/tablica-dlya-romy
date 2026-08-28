@@ -6,6 +6,8 @@ Thumbs.db
 
 data/tunnel.log
 data/uploads/
+data/journal/
+data/students.json.bak
 tools/*.exe
 tools/*.exe.download
 *.download

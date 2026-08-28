@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 BANKS_DIR = DATA_DIR / "banks"
 ROW_KEYS = ("date", "topic", "theory", "practice", "progress", "homework", "comment")
+_BANK_CACHE: dict[str, dict | None] = {}
+_BANK_LIST_CACHE: list[dict] | None = None
 FILE_KEYS = (
     "theoryFileId",
     "theoryFileName",
@@ -169,8 +171,25 @@ def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bo
     return cleaned
 
 
+def _bank_id(bank_id: str) -> str:
+    return re.sub(r"[^a-z0-9\-]", "", str(bank_id or "").lower())
+
+
+def invalidate_banks(bank_id: str | None = None) -> None:
+    global _BANK_LIST_CACHE
+    _BANK_LIST_CACHE = None
+    if bank_id:
+        _BANK_CACHE.pop(_bank_id(bank_id), None)
+    else:
+        _BANK_CACHE.clear()
+
+
 def load_bank(bank_id: str) -> dict | None:
-    safe = re.sub(r"[^a-z0-9\-]", "", str(bank_id or "").lower())
+    safe = _bank_id(bank_id)
+    if not safe:
+        return None
+    if safe in _BANK_CACHE:
+        return _BANK_CACHE[safe]
     path = BANKS_DIR / f"{safe}.json"
     if not path.exists():
         return None
@@ -181,18 +200,25 @@ def load_bank(bank_id: str) -> dict | None:
     if not isinstance(raw, dict) or not isinstance(raw.get("tasks"), list):
         return None
     raw["id"] = safe
+    _BANK_CACHE[safe] = raw
     return raw
 
 
 def save_bank(bank: dict) -> None:
+    global _BANK_LIST_CACHE
     BANKS_DIR.mkdir(parents=True, exist_ok=True)
     path = BANKS_DIR / f"{bank['id']}.json"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(bank, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     tmp.replace(path)
+    _BANK_CACHE[str(bank["id"])] = bank
+    _BANK_LIST_CACHE = None
 
 
 def list_banks() -> list[dict]:
+    global _BANK_LIST_CACHE
+    if _BANK_LIST_CACHE is not None:
+        return _BANK_LIST_CACHE
     BANKS_DIR.mkdir(parents=True, exist_ok=True)
     result = []
     for path in sorted(BANKS_DIR.glob("*.json")):
@@ -207,6 +233,7 @@ def list_banks() -> list[dict]:
             }
         )
     result.sort(key=lambda item: (0 if item["id"] == "ege-10" else 1, item["title"].casefold(), item["id"]))
+    _BANK_LIST_CACHE = result
     return result
 
 
@@ -215,11 +242,12 @@ def pdf_bank_id(pdf_bytes: bytes) -> str:
 
 
 def delete_bank(bank_id: str) -> None:
-    safe = re.sub(r"[^a-z0-9\-]", "", str(bank_id or "").lower())
+    safe = _bank_id(bank_id)
     if not safe.startswith("pdf-"):
         return
     path = BANKS_DIR / f"{safe}.json"
     path.unlink(missing_ok=True)
+    invalidate_banks(safe)
 
 
 def bank_used(data: dict, bank_id: str) -> bool:
@@ -277,11 +305,26 @@ def progress_color(percent: int) -> str:
     return "dark"
 
 
+def public_student_summary(student: dict | None) -> dict | None:
+    if not student or not isinstance(student, dict) or not student.get("id"):
+        return None
+    return {
+        "id": student.get("id"),
+        "name": student.get("name") or "",
+        "template": "twice" if student.get("template") == "twice" else "once",
+        "login": student.get("login") or "",
+        "password_is_initial": bool(student.get("password_is_initial")),
+        "schedule": student.get("schedule") if isinstance(student.get("schedule"), dict) else None,
+        "tableReady": False,
+    }
+
+
 def public_student(student: dict | None) -> dict | None:
     if not student:
         return None
     rows = []
-    bank_cache: dict[str, dict | None] = {}
+    title_cache: dict[str, str] = {}
+    stats_cache: dict[str, dict] = {}
     for row in student.get("rows") or []:
         if not isinstance(row, dict):
             continue
@@ -291,11 +334,14 @@ def public_student(student: dict | None) -> dict | None:
         for key in FILE_KEYS:
             item[key] = str(row.get(key) or "")
         if item["bankId"]:
-            if item["bankId"] not in bank_cache:
-                bank_cache[item["bankId"]] = load_bank(item["bankId"])
-            bank = bank_cache[item["bankId"]]
-            item["bankTitle"] = (bank.get("title") if bank else "") or item["bankId"]
-            stats = bank_stats(student, item["bankId"])
+            bank_id = item["bankId"]
+            if bank_id not in title_cache:
+                bank = load_bank(bank_id)
+                title_cache[bank_id] = (bank.get("title") if bank else "") or bank_id
+            if bank_id not in stats_cache:
+                stats_cache[bank_id] = bank_stats(student, bank_id)
+            stats = stats_cache[bank_id]
+            item["bankTitle"] = title_cache[bank_id]
             item["practice"] = f"{stats['done']}/{stats['total']}"
             item["progress"] = f"{stats['percent']}%"
             item["progressPercent"] = stats["percent"]
@@ -309,6 +355,7 @@ def public_student(student: dict | None) -> dict | None:
         "password_is_initial": bool(student.get("password_is_initial")),
         "rows": rows,
         "schedule": student.get("schedule") if isinstance(student.get("schedule"), dict) else None,
+        "tableReady": True,
     }
 
 

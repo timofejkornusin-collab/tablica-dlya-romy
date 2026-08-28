@@ -33,7 +33,18 @@ STATIC = ROOT / "static"
 DATA_DIR = ROOT / "data"
 TOOLS_DIR = ROOT / "tools"
 DATA_FILE = DATA_DIR / "students.json"
+JOURNAL_DIR = DATA_DIR / "journal"
 AUTH_FILE = DATA_DIR / "auth.json"
+STUDENT_META_KEYS = (
+    "id",
+    "name",
+    "login",
+    "template",
+    "schedule",
+    "password_salt",
+    "password_hash",
+    "password_is_initial",
+)
 UPLOADS_DIR = DATA_DIR / "uploads"
 CLOUDFLARED = TOOLS_DIR / "cloudflared.exe"
 HOST = "0.0.0.0"
@@ -46,6 +57,7 @@ CLOUDFLARED_URLS = (
 
 DATA_LOCK = threading.Lock()
 SESSION_LOCK = threading.Lock()
+_DATA_CACHE: dict | None = None
 SESSIONS: dict[str, dict] = {}
 PUBLIC_URL = ""
 TUNNEL_ERROR = ""
@@ -150,10 +162,14 @@ def default_auth() -> dict:
     }
 
 
-def atomic_write(path: Path, payload: dict) -> None:
+def atomic_write(path: Path, payload: dict, pretty: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if pretty:
+        text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    else:
+        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+    tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)
 
 
@@ -171,32 +187,109 @@ def load_auth() -> dict:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not AUTH_FILE.exists():
         auth = default_auth()
-        atomic_write(AUTH_FILE, auth)
+        atomic_write(AUTH_FILE, auth, pretty=True)
         return auth
     auth = load_json(AUTH_FILE, {})
     if not auth.get("teacher_login") or not auth.get("teacher_password_hash"):
         auth = default_auth()
-        atomic_write(AUTH_FILE, auth)
+        atomic_write(AUTH_FILE, auth, pretty=True)
     return auth
 
 
 def save_auth(auth: dict) -> None:
-    atomic_write(AUTH_FILE, auth)
+    atomic_write(AUTH_FILE, auth, pretty=True)
+
+
+def safe_student_file_id(student_id: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_-]", "", str(student_id or ""))[:80]
+
+
+def student_meta(student: dict) -> dict:
+    item = {}
+    for key in STUDENT_META_KEYS:
+        if key in student:
+            item[key] = student[key]
+    item["id"] = str(student.get("id") or "")
+    item["name"] = str(student.get("name") or "")
+    item["login"] = str(student.get("login") or "")
+    item["template"] = "twice" if student.get("template") == "twice" else "once"
+    return item
+
+
+def _load_journal() -> dict:
+    meta = load_json(JOURNAL_DIR / "meta.json", {"students": []})
+    students = []
+    for item in meta.get("students") or []:
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        safe = safe_student_file_id(str(item["id"]))
+        body = load_json(JOURNAL_DIR / f"{safe}.json", {}) if safe else {}
+        merged = dict(item)
+        merged["rows"] = body.get("rows") if isinstance(body.get("rows"), list) else []
+        merged["progress"] = body.get("progress") if isinstance(body.get("progress"), dict) else {}
+        students.append(merged)
+    return {"students": students}
 
 
 def load_data() -> dict:
+    global _DATA_CACHE
+    if _DATA_CACHE is not None:
+        return _DATA_CACHE
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not DATA_FILE.exists():
-        atomic_write(DATA_FILE, default_data())
-        return default_data()
-    raw = load_json(DATA_FILE, default_data())
-    if not isinstance(raw.get("students"), list):
-        return default_data()
-    return raw
+    if (JOURNAL_DIR / "meta.json").exists():
+        loaded = _load_journal()
+    elif DATA_FILE.exists():
+        raw = load_json(DATA_FILE, default_data())
+        loaded = raw if isinstance(raw.get("students"), list) else default_data()
+    else:
+        loaded = default_data()
+    _DATA_CACHE = loaded
+    return loaded
 
 
-def save_data(data: dict) -> None:
-    atomic_write(DATA_FILE, {"students": data.get("students", [])})
+def _changed_id_set(changed_ids: str | list[str] | set[str] | None) -> set[str] | None:
+    if changed_ids is None:
+        return None
+    if isinstance(changed_ids, str):
+        return {changed_ids} if changed_ids else set()
+    return {str(item) for item in changed_ids if item}
+
+
+def save_data(data: dict, changed_ids: str | list[str] | set[str] | None = None) -> None:
+    global _DATA_CACHE
+    JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+    students = [item for item in (data.get("students") or []) if isinstance(item, dict) and item.get("id")]
+    wanted = _changed_id_set(changed_ids)
+    live_ids = set()
+    meta_students = []
+    for student in students:
+        sid = str(student["id"])
+        safe = safe_student_file_id(sid)
+        if not safe:
+            continue
+        live_ids.add(safe)
+        meta_students.append(student_meta(student))
+        if wanted is None or sid in wanted or safe in wanted:
+            atomic_write(
+                JOURNAL_DIR / f"{safe}.json",
+                {
+                    "rows": student.get("rows") if isinstance(student.get("rows"), list) else [],
+                    "progress": student.get("progress") if isinstance(student.get("progress"), dict) else {},
+                },
+            )
+    atomic_write(JOURNAL_DIR / "meta.json", {"students": meta_students}, pretty=True)
+    for path in JOURNAL_DIR.glob("*.json"):
+        if path.name == "meta.json":
+            continue
+        if path.stem not in live_ids:
+            path.unlink(missing_ok=True)
+    if DATA_FILE.exists():
+        bak = DATA_DIR / "students.json.bak"
+        try:
+            DATA_FILE.replace(bak)
+        except OSError:
+            pass
+    _DATA_CACHE = data
 
 
 def migrate_students() -> list[str]:
@@ -751,7 +844,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _read_json(self) -> dict | None:
         length = int(self.headers.get("Content-Length", "0") or "0")
-        if length > 2_000_000:
+        if length > 8_000_000:
             self._send_json({"ok": False, "error": "Слишком большой запрос"}, 413)
             return None
         try:
@@ -795,14 +888,26 @@ class Handler(SimpleHTTPRequestHandler):
             if not user:
                 self._send_json({"ok": False, "error": "Нужно войти"}, 401)
                 return
+            query = {key: values[0] for key, values in parse_qs(urlparse(self.path).query).items()}
+            wanted = str(query.get("id") or "").strip()
+            payload = None
+            summaries = None
             with DATA_LOCK:
                 data = load_data()
-            if user["role"] == "teacher":
-                self._send_json({"students": [public_student(item) for item in data["students"] if public_student(item)]})
-                return
-            student = find_student(data, user.get("student_id", ""))
-            payload = public_student(student)
-            self._send_json({"students": [payload] if payload else []})
+                if user["role"] == "student":
+                    payload = public_student(find_student(data, user.get("student_id", "")))
+                elif wanted:
+                    payload = public_student(find_student(data, wanted))
+                else:
+                    summaries = []
+                    for item in data["students"]:
+                        summary = journal.public_student_summary(item)
+                        if summary:
+                            summaries.append(summary)
+            if summaries is not None:
+                self._send_json({"students": summaries})
+            else:
+                self._send_json({"students": [payload] if payload else []})
             return
         if path == "/api/banks":
             if not self._user():
@@ -989,7 +1094,7 @@ class Handler(SimpleHTTPRequestHandler):
                 journal.apply_schedule(student, start, slots, template)
             data = load_data()
             data["students"].append(student)
-            save_data(data)
+            save_data(data, student["id"])
         self._send_json(
             {
                 "ok": True,
@@ -1010,7 +1115,7 @@ class Handler(SimpleHTTPRequestHandler):
         with DATA_LOCK:
             data = load_data()
             data["students"] = [item for item in data["students"] if item.get("id") != student_id]
-            save_data(data)
+            save_data(data, student_id)
         self._send_json({"ok": True})
 
     def _set_student_password(self, user: dict) -> None:
@@ -1034,7 +1139,7 @@ class Handler(SimpleHTTPRequestHandler):
             student["password_salt"] = salt
             student["password_hash"] = digest
             student["password_is_initial"] = False
-            save_data(data)
+            save_data(data, student_id)
             login = str(student.get("login") or "")
         self._send_json({"ok": True, "login": login, "password": password})
 
@@ -1083,9 +1188,8 @@ class Handler(SimpleHTTPRequestHandler):
             student["rows"] = new_rows
             if user["role"] == "teacher" and payload.get("template") in ("once", "twice"):
                 student["template"] = payload["template"]
-            save_data(data)
-            saved = public_student(student)
-        self._send_json({"ok": True, "student": saved})
+            save_data(data, student_id)
+        self._send_json({"ok": True})
 
     def _save_schedule(self, user: dict) -> None:
         if user["role"] != "teacher":
@@ -1123,7 +1227,7 @@ class Handler(SimpleHTTPRequestHandler):
             }
             if payload.get("regenerate", True):
                 journal.apply_schedule(student, start, slots, template)
-            save_data(data)
+            save_data(data, student_id)
             saved = public_student(student)
         self._send_json({"ok": True, "student": saved})
 
@@ -1174,7 +1278,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "Ответ уже сохранён. Изменить его нельзя."}, 409)
                 return
             stats = journal.set_task_answer(student, bank_id, number, str(payload.get("answer") or ""))
-            save_data(data)
+            save_data(data, student_id)
         self._send_json({"ok": True, "stats": stats, "statsColor": journal.progress_color(stats["percent"])})
 
     def _save_bank_key(self, user: dict) -> None:
@@ -1314,7 +1418,7 @@ class Handler(SimpleHTTPRequestHandler):
                 bank = attach_pdf_bank(
                     data, student, row_index, b"", source_name, source_key, parsed=parsed_bank
                 )
-                save_data(data)
+                save_data(data, student_id)
                 saved = public_student(student)
             except ValueError as exc:
                 self._send_json({"ok": False, "error": str(exc)}, 400)
@@ -1402,7 +1506,7 @@ class Handler(SimpleHTTPRequestHandler):
                     imported_total = len(parsed_bank.get("tasks") or [])
                 except Exception:
                     import_error = import_error or "Не получилось сохранить задания из PDF."
-            save_data(data)
+            save_data(data, student_id)
             saved = public_student(student)
         payload = {"ok": True, "student": saved}
         if import_error:
@@ -1443,7 +1547,7 @@ class Handler(SimpleHTTPRequestHandler):
                 (UPLOADS_DIR / old_id).unlink(missing_ok=True)
             rows[row_index][f"{field}FileId"] = ""
             rows[row_index][f"{field}FileName"] = ""
-            save_data(data)
+            save_data(data, student_id)
             saved = public_student(student)
         self._send_json({"ok": True, "student": saved})
 
