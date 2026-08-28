@@ -147,6 +147,10 @@
     margin: 7px 0 0;
   }
 
+  td.col-date .date-cell-bottom {
+    width: 100%;
+  }
+
   td.col-date .date-row-tools {
     padding: 6px 0 0 !important;
     justify-content: flex-start !important;

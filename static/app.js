@@ -1125,8 +1125,10 @@ function renderTable() {
               <textarea class="cell-fill" data-row="${rowIndex}" data-key="date" rows="1" spellcheck="false" placeholder="например 10.09.2026, 17:00" ${readonly}>${escapeHtml(
                 String(row.date || "")
               )}</textarea>
-              ${controls}
-              ${rowTools}
+              <div class="date-cell-bottom">
+                ${controls}
+                ${rowTools}
+              </div>
             </div>
           </td>`;
         }

@@ -250,6 +250,7 @@ class RowCopyTest(unittest.TestCase):
         app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
         self.assertIn("date-row-tools", app_js)
+        self.assertIn("date-cell-bottom", app_js)
         self.assertIn("row-copy-btn", app_js)
         self.assertIn("row-paste-btn", app_js)
         self.assertIn("applyCopiedRow", app_js)

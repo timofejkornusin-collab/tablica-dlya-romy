@@ -657,8 +657,15 @@ textarea.cell-fill {
   inset: auto;
   flex: 1 1 auto;
   height: auto;
-  min-height: 0;
-  padding-bottom: 6px;
+  min-height: 32px;
+  padding-bottom: 4px;
+}
+
+.date-cell-bottom {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .lesson-status-controls {
@@ -720,6 +727,7 @@ textarea.cell-fill {
   align-items: center;
   gap: 4px;
   padding: 0 7px 7px;
+  flex-shrink: 0;
 }
 
 .row-copy-btn,
@@ -727,12 +735,12 @@ textarea.cell-fill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(24, 51, 76, 0.28);
   border-radius: 8px;
-  background: #fff;
+  background: var(--navy-soft);
   color: var(--navy);
   cursor: pointer;
 }
@@ -751,8 +759,8 @@ textarea.cell-fill {
 }
 
 .row-tool-icon {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   display: block;
   pointer-events: none;
 }
