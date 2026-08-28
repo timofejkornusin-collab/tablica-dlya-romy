@@ -24,6 +24,25 @@ const TEMPLATE_LABELS = {
 };
 
 const TABLE_CLIPBOARD_KEY = "journal-table-clipboard-v1";
+const ROW_CLIPBOARD_KEY = "journal-row-clipboard-v1";
+const ROW_COPY_ICON =
+  '<svg class="row-tool-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4A1.3 1.3 0 0 0 3.8 10.5h1.7" fill="none" stroke="currentColor" stroke-width="1.35"/></svg>';
+const ROW_PASTE_ICON =
+  '<svg class="row-tool-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.35"/><rect x="5.5" y="1.8" width="5" height="3.2" rx="1" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M6 8.2h4M6 10.6h4" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>';
+const ROW_COPY_KEYS = [
+  "topic",
+  "theory",
+  "homework",
+  "comment",
+  "bankId",
+  "importedSource",
+  "theoryFileId",
+  "theoryFileName",
+  "homeworkFileId",
+  "homeworkFileName",
+  "practiceFileId",
+  "practiceFileName",
+];
 
 function ensureTableCopyButtons() {
   const actions = document.getElementById("table-actions");
@@ -70,6 +89,7 @@ const state = {
   localTeacher: false,
   pendingNewStudent: false,
   tableClipboard: null,
+  rowClipboard: null,
 };
 
 const els = {
@@ -196,6 +216,28 @@ function applyCopiedTable(target, copied) {
   if (copied.schedule) {
     target.schedule = cloneTableData(copied.schedule);
   }
+}
+
+function copyableRowSnapshot(row) {
+  const source = row && typeof row === "object" ? row : emptyRow();
+  const copy = emptyRow();
+  ROW_COPY_KEYS.forEach((key) => {
+    copy[key] = String(source[key] || "");
+  });
+  copy.lessonStatus = source.lessonStatus === "held" || source.lessonStatus === "missed" ? source.lessonStatus : "";
+  return copy;
+}
+
+function applyCopiedRow(target, source) {
+  const keptDate = String((target && target.date) || "");
+  const next = copyableRowSnapshot(source);
+  next.date = keptDate;
+  if (!target || typeof target !== "object") return next;
+  Object.keys(target).forEach((key) => {
+    delete target[key];
+  });
+  Object.assign(target, next);
+  return target;
 }
 
 function emptyRow() {
@@ -613,6 +655,83 @@ function loadTableClipboard() {
   }
 }
 
+function loadRowClipboard() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(ROW_CLIPBOARD_KEY) || "null");
+    if (stored && stored.row && typeof stored.row === "object") {
+      state.rowClipboard = stored;
+    }
+  } catch (_error) {
+    state.rowClipboard = null;
+  }
+}
+
+function updateRowPasteButtons() {
+  const ready = Boolean(state.rowClipboard && state.rowClipboard.row);
+  document.querySelectorAll(".row-paste-btn").forEach((button) => {
+    button.classList.toggle("is-disabled", !ready);
+    button.title = ready ? "Вставить скопированную строку" : "Сначала скопируйте строку";
+  });
+}
+
+function copyRowAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  syncTableRowsFromDom(student);
+  const row = student.rows[index];
+  if (!row) return;
+  state.rowClipboard = {
+    v: 1,
+    copiedAt: new Date().toISOString(),
+    sourceStudentId: student.id,
+    sourceName: student.name,
+    sourceRowIndex: index,
+    row: copyableRowSnapshot(row),
+  };
+  try {
+    sessionStorage.setItem(ROW_CLIPBOARD_KEY, JSON.stringify(state.rowClipboard));
+  } catch (_error) {
+    /* Буфер всё равно действует, пока открыта эта страница. */
+  }
+  updateRowPasteButtons();
+  setSaveStatus("Строка скопирована");
+}
+
+async function pasteRowAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  const copied = state.rowClipboard && state.rowClipboard.row;
+  if (!copied) {
+    setSaveStatus("Сначала скопируйте строку");
+    return;
+  }
+  if (state.rowClipboard.sourceStudentId === student.id && Number(state.rowClipboard.sourceRowIndex) === Number(index)) {
+    setSaveStatus("Это та же строка — вставьте в другую");
+    return;
+  }
+  clearTimeout(saveTimer);
+  await saveChain.catch(() => {});
+  syncTableRowsFromDom(student);
+  while (student.rows.length <= index) student.rows.push(emptyRow());
+  const target = student.rows[index];
+  if (!target) return;
+  bumpSaveEpoch(student.id);
+  applyCopiedRow(target, copied);
+  skipTableDomSync = true;
+  renderTable();
+  await persistCurrent();
+  try {
+    const stayOn = student.id;
+    await loadStudents();
+    state.currentId = stayOn;
+  } catch (_error) {
+    /* локальная вставка уже на экране */
+  }
+  skipTableDomSync = true;
+  renderTable();
+  setSaveStatus("Строка вставлена — можно сразу править");
+}
+
 function updateTableCopyButtons() {
   const teacherTable = isTeacherUi() && state.view === "table" && Boolean(currentStudent());
   if (els.copyTableBtn) {
@@ -992,12 +1111,22 @@ function renderTable() {
                   status === "held" ? "✓ Было занятие" : "× Занятия не было"
                 }</span>`
               : "";
+          const pasteReady = Boolean(state.rowClipboard && state.rowClipboard.row);
+          const rowTools = isTeacherUi()
+            ? `<div class="date-row-tools">
+                <button class="row-copy-btn" type="button" data-row="${rowIndex}" title="Скопировать строку" aria-label="Скопировать строку">${ROW_COPY_ICON}</button>
+                <button class="row-paste-btn${pasteReady ? "" : " is-disabled"}" type="button" data-row="${rowIndex}" title="${
+                  pasteReady ? "Вставить скопированную строку" : "Сначала скопируйте строку"
+                }" aria-label="Вставить строку">${ROW_PASTE_ICON}</button>
+              </div>`
+            : "";
           return `<td class="col-date" data-label="${escapeHtml(column.label)}">
             <div class="date-cell">
               <textarea class="cell-fill" data-row="${rowIndex}" data-key="date" rows="1" spellcheck="false" placeholder="например 10.09.2026, 17:00" ${readonly}>${escapeHtml(
                 String(row.date || "")
               )}</textarea>
               ${controls}
+              ${rowTools}
             </div>
           </td>`;
         }
@@ -1061,7 +1190,7 @@ function renderTable() {
     : rowIndexes.map(renderLessonRow).join("");
 
   els.tableView.innerHTML = `
-    <div class="table-wrap" data-student-id="${escapeHtml(String(student.id || ""))}">
+    <div class="table-wrap${isTeacherUi() ? " teacher-table" : ""}" data-student-id="${escapeHtml(String(student.id || ""))}">
       <table>
         <thead><tr>${head}</tr></thead>
         <tbody>${body}</tbody>
@@ -1676,7 +1805,30 @@ els.tableView.addEventListener("change", (event) => {
     .catch((error) => setSaveStatus(error.message));
 });
 
+els.tableView.addEventListener("mousedown", (event) => {
+  if (event.target.closest(".row-copy-btn, .row-paste-btn")) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+});
+
 els.tableView.addEventListener("click", async (event) => {
+  const copyRowBtn = event.target.closest(".row-copy-btn");
+  if (copyRowBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    copyRowAt(Number(copyRowBtn.dataset.row));
+    return;
+  }
+  const pasteRowBtn = event.target.closest(".row-paste-btn");
+  if (pasteRowBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    pasteRowAt(Number(pasteRowBtn.dataset.row)).catch((error) => {
+      setSaveStatus(error.message);
+    });
+    return;
+  }
   const statusBtn = event.target.closest(".lesson-status-btn");
   if (statusBtn) {
     const student = currentStudent();
@@ -1924,6 +2076,7 @@ async function enterApp() {
 
 async function start() {
   loadTableClipboard();
+  loadRowClipboard();
   try {
     const session = await loadSession();
     if (!session.user) {

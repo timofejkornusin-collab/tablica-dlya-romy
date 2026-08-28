@@ -24,6 +24,8 @@ class PracticeScrollTest(unittest.TestCase):
         self.assertIn("bumpSaveEpoch", app_js)
         self.assertIn("keepRicher", app_js)
         self.assertIn("syncStartDateWeekday", app_js)
+        self.assertIn("applyCopiedRow", app_js)
+        self.assertIn("row-copy-btn", app_js)
 
         self.assertNotIn("scrollTop = 0", page_js)
         self.assertNotIn("view.scrollTop = 0", page_js)

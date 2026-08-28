@@ -194,6 +194,70 @@ class TableCopyTest(unittest.TestCase):
         self.assertFalse(server.upload_is_referenced(data, "not-an-upload"))
 
 
+class RowCopyTest(unittest.TestCase):
+    def test_copy_row_keeps_target_date_and_skips_progress(self) -> None:
+        source = journal.empty_row("03.09.2026, 18:00")
+        source.update(
+            {
+                "topic": "Орфография",
+                "theory": "правила",
+                "homework": "упр. 5",
+                "comment": "молодец",
+                "bankId": "ege-10",
+                "lessonStatus": "held",
+                "theoryFileId": "t1",
+                "theoryFileName": "t.pdf",
+                "importedSource": "manual:ege-10",
+                "practice": "8/10",
+                "progress": "40%",
+            }
+        )
+        target = journal.empty_row("10.09.2026, 17:00")
+        target.update({"topic": "старое", "practice": "1/10", "progress": "10%"})
+
+        journal.copy_lesson_row(source, target)
+
+        self.assertEqual(target["date"], "10.09.2026, 17:00")
+        self.assertEqual(target["topic"], "Орфография")
+        self.assertEqual(target["theory"], "правила")
+        self.assertEqual(target["homework"], "упр. 5")
+        self.assertEqual(target["comment"], "молодец")
+        self.assertEqual(target["bankId"], "ege-10")
+        self.assertEqual(target["lessonStatus"], "held")
+        self.assertEqual(target["theoryFileId"], "t1")
+        self.assertEqual(target["theoryFileName"], "t.pdf")
+        self.assertEqual(target["importedSource"], "manual:ege-10")
+        self.assertEqual(target["practice"], "")
+        self.assertEqual(target["progress"], "")
+        source["topic"] = "изменено после копирования"
+        self.assertEqual(target["topic"], "Орфография")
+
+    def test_pasted_row_stays_editable_through_clean_rows(self) -> None:
+        source = journal.empty_row("03.09.2026, 18:00")
+        source["topic"] = "Тема"
+        source["bankId"] = "ege-10"
+        target = journal.empty_row("17.09.2026, 16:00")
+        journal.copy_lesson_row(source, target)
+        target["topic"] = "Правка после вставки"
+        target["comment"] = "можно менять"
+        cleaned = journal.clean_rows([target])
+        self.assertEqual(cleaned[0]["date"], "17.09.2026, 16:00")
+        self.assertEqual(cleaned[0]["topic"], "Правка после вставки")
+        self.assertEqual(cleaned[0]["comment"], "можно менять")
+        self.assertEqual(cleaned[0]["bankId"], "ege-10")
+
+    def test_app_has_row_copy_buttons_in_date_cell(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("date-row-tools", app_js)
+        self.assertIn("row-copy-btn", app_js)
+        self.assertIn("row-paste-btn", app_js)
+        self.assertIn("applyCopiedRow", app_js)
+        self.assertIn("journal-row-clipboard-v1", app_js)
+        self.assertIn("date-row-tools", styles)
+        self.assertIn("const rowTools = isTeacherUi()", app_js)
+
+
 class CorrectProgressTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()

@@ -38,8 +38,9 @@ class DeployProductionTest(unittest.TestCase):
         (self.stage / "static" / "app.js").write_text(
             "const copy = 'copy-table-btn';\nconst status = 'lesson-status-btn';\nconst summary = 'practice-summary';\n"
             "function restorePracticeScroll() {}\nconst keepScroll = true;\n"
-            "function applyCopiedTable() {}\nfunction bumpSaveEpoch() {}\n"
-            "function syncStartDateWeekday() {}\nconst keepRicher = true;\n",
+            "function applyCopiedTable() {}\nfunction applyCopiedRow() {}\nfunction bumpSaveEpoch() {}\n"
+            "function syncStartDateWeekday() {}\nconst keepRicher = true;\n"
+            "const copyRow = 'row-copy-btn';\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "practice-page.js").write_text(
@@ -87,9 +88,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=table-tools3", text)
-        self.assertIn("mobile.css?v=keep-scroll2", text)
-        self.assertIn("app.js?v=settings-date1", text)
+        self.assertIn("styles.css?v=row-copy1", text)
+        self.assertIn("mobile.css?v=row-copy1", text)
+        self.assertIn("app.js?v=row-copy1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
@@ -109,7 +110,7 @@ class DeployProductionTest(unittest.TestCase):
         self.assertEqual((self.app / "journal.py").read_text(encoding="utf-8"), "VALUE = 'stage-journal'\n")
         self.assertEqual((self.app / "server.py").read_text(encoding="utf-8"), "PORT = 8765\n")
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("settings-date1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("row-copy1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 

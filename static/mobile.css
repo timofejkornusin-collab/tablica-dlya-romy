@@ -147,6 +147,17 @@
     margin: 7px 0 0;
   }
 
+  td.col-date .date-row-tools {
+    padding: 6px 0 0 !important;
+    justify-content: flex-start !important;
+  }
+
+  td.col-date .row-copy-btn,
+  td.col-date .row-paste-btn {
+    width: 36px;
+    height: 36px;
+  }
+
   .material-tools,
   .file-corner {
     position: static !important;

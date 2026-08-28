@@ -509,6 +509,10 @@ tbody tr {
   transition: background-color 0.12s ease;
 }
 
+.teacher-table tbody tr {
+  height: 148px;
+}
+
 .lesson-upcoming td {
   background: #fffdf6;
 }
@@ -661,7 +665,7 @@ textarea.cell-fill {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  padding: 0 7px 7px;
+  padding: 0 7px 4px;
 }
 
 .lesson-status-btn {
@@ -710,6 +714,49 @@ textarea.cell-fill {
   color: var(--terracotta);
 }
 
+.date-row-tools {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px 7px;
+}
+
+.row-copy-btn,
+.row-paste-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--navy);
+  cursor: pointer;
+}
+
+.row-copy-btn:hover,
+.row-paste-btn:hover,
+.row-copy-btn:focus-visible,
+.row-paste-btn:focus-visible {
+  border-color: var(--navy);
+  background: var(--navy-soft);
+  outline: none;
+}
+
+.row-paste-btn.is-disabled {
+  opacity: 0.4;
+}
+
+.row-tool-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  pointer-events: none;
+}
+
 td input:focus,
 td textarea:focus,
 input[type="text"]:focus,
@@ -725,7 +772,7 @@ textarea:focus {
 .col-row-tools { width: 44px; }
 
 @media (min-width: 981px) {
-  .col-date      { width: 12%; min-width: 110px; }
+  .col-date      { width: 12%; min-width: 124px; }
   .col-topic     { width: 16%; min-width: 140px; }
   .col-theory    { width: 16%; min-width: 140px; }
   .col-practice  { width: 14%; min-width: 130px; }

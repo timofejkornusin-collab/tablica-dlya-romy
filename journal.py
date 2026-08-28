@@ -23,6 +23,15 @@ FILE_KEYS = (
     "practiceFileName",
 )
 LESSON_STATUSES = {"held", "missed"}
+ROW_COPY_KEYS = (
+    "topic",
+    "theory",
+    "homework",
+    "comment",
+    "bankId",
+    "importedSource",
+    *FILE_KEYS,
+)
 WEEKDAY_NAMES = (
     "понедельник",
     "вторник",
@@ -219,6 +228,26 @@ def copy_student_table(source: dict, target: dict) -> None:
         target["schedule"] = copy.deepcopy(schedule)
     else:
         target.pop("schedule", None)
+
+
+def copy_lesson_row(source: dict | None, target: dict | None) -> dict:
+    """Copy one lesson's teaching content into another row, keeping the target date.
+
+    Progress and student answers stay with the student, not the row.
+    """
+    if not isinstance(target, dict):
+        target = empty_row()
+    if not isinstance(source, dict):
+        source = empty_row()
+    kept_date = str(target.get("date") or "")
+    copied = empty_row(kept_date)
+    for key in ROW_COPY_KEYS:
+        copied[key] = str(source.get(key) or "")
+    status = str(source.get("lessonStatus") or "")
+    copied["lessonStatus"] = status if status in LESSON_STATUSES else ""
+    target.clear()
+    target.update(copied)
+    return target
 
 
 def load_bank(bank_id: str) -> dict | None:
