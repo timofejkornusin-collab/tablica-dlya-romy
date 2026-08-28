@@ -1193,6 +1193,16 @@ function visibleRowIndexes(student) {
   return visible;
 }
 
+function trimRowsToScheduleEnd(student) {
+  if (!student || !Array.isArray(student.rows)) return;
+  const endIso = toDateInputValue(student.schedule && student.schedule.endDate);
+  if (!endIso) return;
+  student.rows = student.rows.filter((row) => {
+    const iso = dmyToIso(String((row && row.date) || "").split(",")[0]);
+    return !iso || iso <= endIso;
+  });
+}
+
 function renderTable() {
   const student = currentStudent();
   if (!student) {
@@ -1201,6 +1211,7 @@ function renderTable() {
   }
   if (!skipTableDomSync) syncTableRowsFromDom(student);
   skipTableDomSync = false;
+  trimRowsToScheduleEnd(student);
   if (!isTeacherUi()) hideRowConfirm();
   document.body.classList.remove("practice-open");
 
@@ -1881,6 +1892,7 @@ els.studentForm.addEventListener("submit", async (event) => {
         }),
       });
       replaceStudent(data.student);
+      trimRowsToScheduleEnd(data.student);
       state.currentId = data.student.id;
       closeModal();
       setSaveStatus("Настройки сохранены");

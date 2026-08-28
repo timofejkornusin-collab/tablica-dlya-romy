@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import inspect
 import json
 import re
 from datetime import date, datetime, timedelta
@@ -120,6 +121,78 @@ def resolve_schedule_end(
     return end, schedule_end_error(start, end)
 
 
+def end_from_payload(payload, start: date, slots: list[dict] | None = None, existing_schedule=None) -> date:
+    requested, _error = parse_end_date_value(payload.get("endDate") if isinstance(payload, dict) else None)
+    fallback = None
+    if isinstance(existing_schedule, dict):
+        fallback = parse_iso_date(str(existing_schedule.get("endDate") or ""))
+    if requested is not None:
+        return requested
+    end, _error = resolve_schedule_end(start, slots, None, fallback)
+    return end
+
+
+def end_date_from_request_payload() -> date | None:
+    """Read endDate from the HTTP handler that called apply_schedule.
+
+    Production keeps its own server.py, so the 4-argument apply_schedule call
+    never receives the form field. The request payload is still in that frame.
+    """
+    try:
+        frames = inspect.stack(context=0)
+    except Exception:
+        return None
+    here = Path(__file__).resolve()
+    try:
+        for info in frames:
+            try:
+                if Path(info.filename).resolve() == here:
+                    continue
+            except Exception:
+                continue
+            loc = info.frame.f_locals
+            blob = None
+            for key in ("payload", "body"):
+                value = loc.get(key)
+                if isinstance(value, dict) and "endDate" in value:
+                    blob = value
+                    break
+            if blob is None:
+                continue
+            start = loc.get("start")
+            if not isinstance(start, date):
+                start = parse_iso_date(str(blob.get("startDate") or loc.get("startDate") or ""))
+            if not isinstance(start, date):
+                continue
+            slots = loc.get("slots")
+            if not isinstance(slots, list):
+                template = loc.get("template") or blob.get("template") or "once"
+                slots = clean_slots(blob.get("slots"), "twice" if template == "twice" else "once")
+            student = loc.get("student")
+            existing = student.get("schedule") if isinstance(student, dict) else None
+            return end_from_payload(blob, start, slots, existing)
+    finally:
+        del frames
+    return None
+
+
+def row_day(row: dict | None) -> date | None:
+    return parse_iso_date(row_date_key(row))
+
+
+def rows_until_end(rows, end: date | None) -> list:
+    if end is None or not isinstance(rows, list):
+        return rows if isinstance(rows, list) else []
+    kept = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        day = row_day(row)
+        if day is None or day <= end:
+            kept.append(row)
+    return kept
+
+
 def parse_iso_date(value: str) -> date | None:
     raw = str(value or "").strip()[:10]
     for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
@@ -194,6 +267,8 @@ def apply_schedule(
     template: str,
     end: date | None = None,
 ) -> None:
+    if end is None:
+        end = end_date_from_request_payload()
     resolved = end if end is not None else default_schedule_end(start, slots)
     dates = generate_lesson_dates(start, slots, resolved)
     old_rows = [row for row in student.get("rows") or [] if isinstance(row, dict)]
@@ -234,7 +309,12 @@ def apply_schedule(
     }
 
 
-def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bool = False) -> list[dict]:
+def clean_rows(
+    rows,
+    keep_from_old: list[dict] | None = None,
+    student_locked: bool = False,
+    end: date | None = None,
+) -> list[dict]:
     cleaned = []
     old = keep_from_old or []
     if not isinstance(rows, list):
@@ -280,7 +360,7 @@ def clean_rows(rows, keep_from_old: list[dict] | None = None, student_locked: bo
             item["practice"] = ""
             item["progress"] = ""
         cleaned.append(item)
-    return cleaned
+    return rows_until_end(cleaned, end)
 
 
 def copy_student_table(source: dict, target: dict) -> None:
@@ -474,7 +554,10 @@ def public_student(student: dict | None) -> dict | None:
         return None
     rows = []
     bank_cache: dict[str, dict | None] = {}
-    for row in student.get("rows") or []:
+    schedule = student.get("schedule") if isinstance(student.get("schedule"), dict) else None
+    end = parse_iso_date(str((schedule or {}).get("endDate") or ""))
+    source_rows = rows_until_end(student.get("rows") or [], end)
+    for row in source_rows:
         if not isinstance(row, dict):
             continue
         item = {key: str(row.get(key, "") or "") for key in ROW_KEYS}

@@ -1108,10 +1108,12 @@ class Handler(SimpleHTTPRequestHandler):
             if not student:
                 self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
                 return
+            end = journal.parse_iso_date(str((student.get("schedule") or {}).get("endDate") or ""))
             new_rows = journal.clean_rows(
                 payload.get("rows"),
                 keep_from_old=student.get("rows") if isinstance(student.get("rows"), list) else [],
                 student_locked=user["role"] == "student",
+                end=end,
             )
             if user["role"] == "student":
                 old_rows = student.get("rows") if isinstance(student.get("rows"), list) else []

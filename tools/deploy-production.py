@@ -62,12 +62,13 @@ APP_MARKERS = (
     "syncStartDateWeekday",
     "importLinkedPdfs",
     "ensureEndDateField",
+    "trimRowsToScheduleEnd",
 )
 
 CACHE_BUSTERS = {
     r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=row-copy1",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=row-copy1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=end-date1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=end-date2",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
@@ -106,6 +107,29 @@ def patch_index(path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+APPLY_SCHEDULE_RE = re.compile(
+    r"journal\.apply_schedule\(\s*student\s*,\s*start\s*,\s*slots\s*,\s*template\s*\)"
+)
+APPLY_SCHEDULE_WITH_END = (
+    "journal.apply_schedule(student, start, slots, template, "
+    "journal.end_from_payload(payload, start, slots, student.get('schedule')))"
+)
+
+
+def patch_server(path: Path) -> None:
+    """Keep production server.py, but pass the last-lesson date into apply_schedule."""
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    if "journal.end_from_payload(payload" in text:
+        return
+    new_text, count = APPLY_SCHEDULE_RE.subn(APPLY_SCHEDULE_WITH_END, text)
+    if count == 0:
+        return
+    path.write_text(new_text, encoding="utf-8")
+    py_compile.compile(str(path), doraise=True)
+
+
 def install_file(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(target.name + ".new")
@@ -123,6 +147,8 @@ def copy_if_exists(source: Path, destination: Path) -> None:
 def restore_files() -> None:
     shutil.copy2(BACKUP / "journal.py", APP_ROOT / "journal.py")
     shutil.copy2(BACKUP / "pdf_import.py", APP_ROOT / "pdf_import.py")
+    if (BACKUP / "server.py").exists():
+        shutil.copy2(BACKUP / "server.py", APP_ROOT / "server.py")
     for item in (BACKUP / "static").iterdir():
         shutil.copy2(item, STATIC_ROOT / item.name)
     students = BACKUP / "data" / "students.json"
@@ -169,6 +195,9 @@ def require_python_and_markers() -> None:
     page_js = (STAGE / "static" / "practice-page.js").read_text(encoding="utf-8", errors="replace")
     if "scrollTop = 0" in page_js or "scrollTop=0" in page_js:
         fail("ОШИБКА: practice-page.js снова сбрасывает прокрутку. Сайт не изменён.")
+    journal_py = (STAGE / "journal.py").read_text(encoding="utf-8", errors="replace")
+    if "end_date_from_request_payload" not in journal_py:
+        fail("ОШИБКА: загружена не та версия journal.py. Сайт не изменён.")
 
 
 def backup_current() -> None:
@@ -177,6 +206,7 @@ def backup_current() -> None:
     try:
         shutil.copy2(APP_ROOT / "journal.py", BACKUP / "journal.py")
         shutil.copy2(APP_ROOT / "pdf_import.py", BACKUP / "pdf_import.py")
+        copy_if_exists(APP_ROOT / "server.py", BACKUP / "server.py")
         shutil.copy2(STATIC_ROOT / "index.html", BACKUP / "static" / "index.html")
         shutil.copy2(STATIC_ROOT / "app.js", BACKUP / "static" / "app.js")
         shutil.copy2(STATIC_ROOT / "styles.css", BACKUP / "static" / "styles.css")
@@ -200,6 +230,7 @@ def install_stage() -> None:
         install_file(STAGE / "static" / "practice-scales.css", STATIC_ROOT / "practice-scales.css")
         install_file(STAGE / "static" / "practice-page.js", STATIC_ROOT / "practice-page.js")
         patch_index(STATIC_ROOT / "index.html")
+        patch_server(APP_ROOT / "server.py")
     except Exception:
         restore_files()
         fail("ОШИБКА: файлы не установлены. Восстановлена прежняя версия.")
@@ -209,7 +240,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "end-date1" in installed_index else "0"
+    index_marker = "1" if "end-date2" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -221,7 +252,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("end-date1"))
+        index_marker = str(live_index.count("end-date2"))
         api_code = curl_code(LOCAL_URL + "/api/students")
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)

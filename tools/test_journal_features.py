@@ -140,6 +140,50 @@ class ScheduleEndDateTest(unittest.TestCase):
         self.assertEqual(student["schedule"]["endDate"], "2027-06-10")
         self.assertEqual(student["rows"][-1]["date"], "10.06.2027, 16:00")
 
+    def test_old_server_four_arg_call_honors_payload_end_date(self) -> None:
+        payload = {
+            "endDate": "2026-12-17",
+            "startDate": "2026-09-03",
+            "slots": [{"weekday": 3, "time": "16:00"}],
+        }
+        start = date(2026, 9, 3)
+        slots = [{"weekday": 3, "time": "16:00"}]
+        template = "once"
+        student = {
+            "rows": [
+                journal.empty_row("03.09.2026, 16:00"),
+                journal.empty_row("27.05.2027, 16:00"),
+            ]
+        }
+        journal.apply_schedule(student, start, slots, template)
+        self.assertEqual(student["schedule"]["endDate"], "2026-12-17")
+        self.assertEqual(student["rows"][-1]["date"], "17.12.2026, 16:00")
+        self.assertFalse(any("05.2027" in str(row.get("date")) for row in student["rows"]))
+        self.assertFalse(any(str(row.get("date")).startswith("24.12.2026") for row in student["rows"]))
+
+    def test_public_student_hides_rows_after_end_date(self) -> None:
+        student = {
+            "id": "x",
+            "name": "Тест",
+            "template": "once",
+            "schedule": {"startDate": "2026-09-03", "endDate": "2026-09-10", "slots": []},
+            "rows": [
+                journal.empty_row("03.09.2026, 16:00"),
+                journal.empty_row("10.09.2026, 16:00"),
+                journal.empty_row("17.09.2026, 16:00"),
+            ],
+        }
+        public = journal.public_student(student)
+        self.assertEqual(
+            [row["date"] for row in public["rows"]],
+            ["03.09.2026, 16:00", "10.09.2026, 16:00"],
+        )
+
+    def test_clean_rows_drops_lessons_after_end(self) -> None:
+        rows = [journal.empty_row("03.09.2026, 16:00"), journal.empty_row("17.09.2026, 16:00")]
+        cleaned = journal.clean_rows(rows, end=date(2026, 9, 10))
+        self.assertEqual([row["date"] for row in cleaned], ["03.09.2026, 16:00"])
+
     def test_missing_end_date_uses_existing_or_may(self) -> None:
         end, error = journal.resolve_schedule_end(
             date(2026, 9, 3),
@@ -163,6 +207,8 @@ class ScheduleEndDateTest(unittest.TestCase):
         self.assertIn("ensureEndDateField", app_js)
         self.assertIn("fillEndDateValue", app_js)
         self.assertIn("defaultEndDateForStart", app_js)
+        self.assertIn("trimRowsToScheduleEnd", app_js)
+        self.assertIn("end_date_from_request_payload", (ROOT / "journal.py").read_text(encoding="utf-8"))
         self.assertIn('id="end-date"', index_html)
         self.assertIn("Дата последнего занятия", index_html)
         self.assertIn("даты встанут до последнего занятия", index_html)
