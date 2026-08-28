@@ -1330,7 +1330,7 @@ class Handler(SimpleHTTPRequestHandler):
                     self._send_json({"ok": False, "error": str(exc)}, 400)
                     return
                 source_key = pdf_import.canonical_source_url(url)
-            elif from_field in ("homework", "practice"):
+            elif from_field in ("homework", "practice", "theory"):
                 with DATA_LOCK:
                     data = load_data()
                     student = find_student(data, student_id)
@@ -1432,13 +1432,16 @@ class Handler(SimpleHTTPRequestHandler):
         parsed_bank = None
         import_error = ""
         imported_total = 0
-        if field == "practice" and suffix == ".pdf":
+        if field in ("practice", "theory", "homework") and suffix == ".pdf":
             try:
                 parsed_bank = pdf_import.import_pdf_bytes(
                     uploaded["data"], original, journal.pdf_bank_id(uploaded["data"])
                 )
+                if field != "practice" and not (parsed_bank.get("tasks") or []):
+                    parsed_bank = None
             except Exception as exc:
-                import_error = str(exc) or "Не получилось разобрать PDF."
+                if field == "practice":
+                    import_error = str(exc) or "Не получилось разобрать PDF."
         with DATA_LOCK:
             data = load_data()
             student = find_student(data, student_id)
@@ -1457,8 +1460,9 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed_bank:
                 try:
                     journal.save_bank(parsed_bank)
-                    rows[row_index]["bankId"] = parsed_bank["id"]
-                    rows[row_index]["importedSource"] = f"file:{stored}"
+                    if field == "practice" or not str(rows[row_index].get("bankId") or ""):
+                        rows[row_index]["bankId"] = parsed_bank["id"]
+                        rows[row_index]["importedSource"] = f"file:{stored}"
                     imported_total = len(parsed_bank.get("tasks") or [])
                 except Exception:
                     import_error = import_error or "Не получилось сохранить задания из PDF."

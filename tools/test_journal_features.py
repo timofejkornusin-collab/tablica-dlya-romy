@@ -259,6 +259,83 @@ class RowCopyTest(unittest.TestCase):
         self.assertIn("const rowTools = isTeacherUi()", app_js)
 
 
+class BankKeyTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.banks_dir = Path(self.temp_dir.name)
+        self.patch = patch.object(journal, "BANKS_DIR", self.banks_dir)
+        self.patch.start()
+
+    def tearDown(self) -> None:
+        self.patch.stop()
+        self.temp_dir.cleanup()
+
+    def _save(self, task: dict, raw: str) -> dict:
+        bank = {"id": "keys-bank", "title": "Ключи", "tasks": [task]}
+        journal.save_bank(bank)
+        self.assertTrue(journal.set_bank_key("keys-bank", int(task["n"]), raw))
+        return journal.load_bank("keys-bank")["tasks"][0]
+
+    def test_word_and_long_number_keys_are_kept(self) -> None:
+        word_task = {
+            "n": 1,
+            "prompt": "Исправьте ошибку и запишите слово правильно.",
+            "options": [],
+            "kind": "word",
+            "answer": "",
+        }
+        saved = self._save(word_task, "ДВУХСТА")
+        self.assertEqual(saved["answer"], "ДВУХСТА")
+
+        choice = {
+            "n": 2,
+            "prompt": "Запишите номера ответов.",
+            "options": ["а", "б", "в", "г", "д"],
+            "answer": "",
+        }
+        saved = self._save(choice, "2, 4, 5")
+        self.assertEqual(saved["answer"], "245")
+        self.assertEqual(journal.normalize_answer("452"), "245")
+
+        sequence = {
+            "n": 3,
+            "prompt": "Установите соответствие. Запишите цифры.",
+            "options": [],
+            "answer": "",
+        }
+        saved = self._save(sequence, "5724613")
+        self.assertEqual(saved["answer"], "5724613")
+
+        passage = {
+            "n": 4,
+            "prompt": "Укажите номера предложений.",
+            "options": [],
+            "answer": "",
+        }
+        saved = self._save(passage, "2, 15, 18")
+        self.assertEqual(saved["answer"], "21518")
+        self.assertEqual(journal.normalize_answer("15, 2, 18"), "21518")
+
+    def test_letters_are_not_stripped_from_a_choice_task(self) -> None:
+        task = {
+            "n": 1,
+            "prompt": "Запишите номера ответов.",
+            "options": ["а", "б", "в", "г", "д"],
+            "answer": "",
+        }
+        saved = self._save(task, "ПРИВЕТ")
+        self.assertEqual(saved["answer"], "ПРИВЕТ")
+        self.assertEqual(journal.normalize_answer("привет", word=False), "привет")
+
+    def test_app_imports_theory_pdfs_and_saves_keys(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        server_py = (ROOT / "server.py").read_text(encoding="utf-8")
+        self.assertIn("importLinkedPdfs", app_js)
+        self.assertIn("firstPdfUrl(row.theory)", app_js)
+        self.assertIn("fromField", app_js)
+        self.assertIn('from_field in ("homework", "practice", "theory")', server_py)
+
+
 class CorrectProgressTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()

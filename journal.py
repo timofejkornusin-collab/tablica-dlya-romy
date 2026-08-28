@@ -335,20 +335,34 @@ def is_word_task(task: dict | None) -> bool:
         for hint in (
             "запишите слово",
             "запишите это слово",
+            "слово правильно",
+            "выпишите",
             "грамматическая ошибка",
             "исправьте ошибку",
             "лексическ",
             "отредактируйте",
+            "постановке ударения",
         )
     )
 
 
+def looks_like_word_answer(raw: str) -> bool:
+    return bool(re.search(r"[A-Za-zА-Яа-яЁё]", str(raw or "")))
+
+
 def normalize_answer(raw: str, word: bool = False) -> str:
     text = str(raw or "").strip()
-    if word:
+    if word or looks_like_word_answer(text):
         return re.sub(r"\s+", "", text).casefold()
-    digits = re.sub(r"[^1-5]", "", text)
-    return "".join(sorted(set(digits)))
+    if re.search(r"[,\s;]+", text):
+        nums = [int(part) for part in re.findall(r"\d+", text)]
+        return "".join(str(n) for n in sorted(set(nums))) if nums else ""
+    digits = re.sub(r"\D", "", text)
+    if not digits:
+        return ""
+    if "0" not in digits and max(digits) <= "5" and len(digits) <= 5:
+        return "".join(sorted(set(digits)))
+    return digits
 
 
 def bank_stats(student: dict, bank_id: str) -> dict:
@@ -501,10 +515,11 @@ def set_bank_key(bank_id: str, number: int, answer: str) -> bool:
             raw = str(answer or "").strip()
             if not raw:
                 task["answer"] = ""
-            elif is_word_task(task):
+            elif is_word_task(task) or looks_like_word_answer(raw):
                 task["answer"] = raw
             else:
-                task["answer"] = normalize_answer(raw)
+                stored = normalize_answer(raw, word=False)
+                task["answer"] = stored or raw
             found = True
             break
     if found:

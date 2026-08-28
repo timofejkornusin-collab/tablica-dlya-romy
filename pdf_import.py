@@ -63,7 +63,10 @@ TASK_START = re.compile(
 )
 LOOSE_START = re.compile(r"(?m)^(?:№\s*)?(\d{1,3})[.)]\s+(?=[А-ЯЁA-Z])")
 OPTION_BLOCK = re.compile(r"(?ms)^\s*([1-5])[.)]\s*(.*?)(?=^\s*[1-5][.)]\s*|\Z)")
-ANSWER_LINE = re.compile(r"Ответ:\s*([1-5]{1,5})\b", re.I)
+ANSWER_LINE = re.compile(
+    r"(?<![A-Za-zА-Яа-яЁё])Ответ\s*:\s*(?!_{2,}|[—–\-.]{3,})([A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9,\s-]{0,48})",
+    re.I,
+)
 BLANK_ANSWER = re.compile(r"Ответ\s*:?\s*[_\-–—.]{3,}\.?", re.I)
 EGE_BOILERPLATE = re.compile(
     r"варианты ответов, в которых во всех словах одного ряда пропущена одна и та же буква\.\s*"
@@ -93,10 +96,13 @@ INSTRUCTION_END = re.compile(
 WORD_HINTS = (
     "запишите слово",
     "запишите это слово",
+    "слово правильно",
+    "выпишите",
     "грамматическая ошибка",
     "исправьте ошибку",
     "лексическ",
     "отредактируйте",
+    "постановке ударения",
 )
 NUMBER_HINTS = (
     "запишите номера",
@@ -366,10 +372,28 @@ def _task_prompt(body: str, options: list[str]) -> str:
     return _strip_prompt_tail(text, strip_number=False)[:4000].strip()
 
 
+def _normalize_key_text(raw: str) -> str:
+    text = str(raw or "").strip(" .;,-")
+    if not text or set(text) <= set("_-–—."):
+        return ""
+    if re.search(r"[A-Za-zА-Яа-яЁё]", text):
+        return re.sub(r"\s+", " ", text).strip()
+    if re.search(r"[,\s;]+", text):
+        nums = [int(part) for part in re.findall(r"\d+", text)]
+        return "".join(str(n) for n in sorted(set(nums))) if nums else ""
+    digits = re.sub(r"\D", "", text)
+    if not digits:
+        return ""
+    if "0" not in digits and max(digits) <= "5" and len(digits) <= 5:
+        return "".join(sorted(set(digits)))
+    return digits
+
+
 def _take_inline_answer(body: str) -> str:
-    match = ANSWER_LINE.search(body)
+    cleaned = BLANK_ANSWER.sub(" ", body or "")
+    match = ANSWER_LINE.search(cleaned)
     if match:
-        return "".join(sorted(set(match.group(1))))
+        return _normalize_key_text(match.group(1))
     return ""
 
 
@@ -379,8 +403,10 @@ def _apply_answer_section(text: str, tasks: list[dict]) -> None:
         return
     section = text[match.end() :]
     by_num = {}
-    for num, ans in re.findall(r"(?m)^\s*(\d{1,3})[.)\s:–—-]+([1-5]{1,5})\s*$", section):
-        by_num[int(num)] = "".join(sorted(set(ans)))
+    for num, ans in re.findall(r"(?m)^\s*(\d{1,3})[.)\s:–—-]+(.+?)\s*$", section):
+        key = _normalize_key_text(ans)
+        if key:
+            by_num[int(num)] = key
     if len(by_num) < 2:
         return
     for task in tasks:

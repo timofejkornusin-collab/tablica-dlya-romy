@@ -848,7 +848,12 @@ async function pasteCopiedTable() {
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    persistCurrent().catch((error) => setSaveStatus(friendlyNetworkError(error).message));
+    persistCurrent()
+      .then(() => importLinkedPdfs(currentStudent()))
+      .then((changed) => {
+        if (changed && state.view === "table") renderTable();
+      })
+      .catch((error) => setSaveStatus(friendlyNetworkError(error).message));
   }, 1200);
 }
 
@@ -1199,6 +1204,13 @@ function renderTable() {
       </table>
     </div>
   `;
+  if (isTeacherUi()) {
+    importLinkedPdfs(student)
+      .then((changed) => {
+        if (changed && state.view === "table" && state.currentId === student.id) renderTable();
+      })
+      .catch(() => {});
+  }
 }
 
 function closePractice() {
@@ -1445,22 +1457,36 @@ function isPdfUrl(url) {
 const importFailed = new Set();
 let importInFlight = false;
 
-async function importHomeworkPdfs(student) {
+async function importLinkedPdfs(student) {
   if (!student || !isTeacherUi() || !state.pdfImport || importInFlight) return false;
   let changed = false;
   for (let index = 0; index < (student.rows || []).length; index += 1) {
     const row = student.rows[index];
-    const url = firstPdfUrl(row.homework);
-    if (!url || url === row.importedSource) continue;
     if (String(row.importedSource || "").startsWith("manual:")) continue;
-    const key = `${student.id}:${index}:${url}`;
+    const url = firstPdfUrl(row.homework) || firstPdfUrl(row.theory);
+    let payload = null;
+    if (url && url !== row.importedSource) {
+      payload = { studentId: student.id, row: index, url };
+    } else if (!row.bankId) {
+      const field = ["practice", "theory", "homework"].find(
+        (name) =>
+          String(row[`${name}FileName`] || "")
+            .toLowerCase()
+            .endsWith(".pdf") && row[`${name}FileId`]
+      );
+      if (field) {
+        payload = { studentId: student.id, row: index, fromField: field };
+      }
+    }
+    if (!payload) continue;
+    const key = `${student.id}:${index}:${payload.url || payload.fromField}:${row.theoryFileId || ""}`;
     if (importFailed.has(key)) continue;
     importInFlight = true;
     setSaveStatus("Разбираю PDF…");
     try {
       const data = await api("/api/import-pdf", {
         method: "POST",
-        body: JSON.stringify({ studentId: student.id, row: index, url }),
+        body: JSON.stringify(payload),
       });
       replaceStudent(data.student);
       await loadBanks();

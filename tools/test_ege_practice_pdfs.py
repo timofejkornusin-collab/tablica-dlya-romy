@@ -96,6 +96,41 @@ class SyntheticPdfImportTest(unittest.TestCase):
         self.assertNotIn("Ответ", tasks[1]["prompt"])
         self.assertTrue(journal.is_word_task(tasks[1]))
 
+    def test_inline_word_and_long_keys_are_kept(self) -> None:
+        text = (
+            "1.В одном из выделенных ниже слов допущена грамматическая ошибка. "
+            "Исправьте ошибку и запишите слово правильно. Ответ: ДВУХСТА.\n"
+            "около ДВУХСТА деревьев\n"
+            "пачка МАКАРОН\n"
+            "петь ГРОМЧЕ всех\n"
+            "КРАСИВЫЙ Сочи\n"
+            "ЧИТАЯ поэму\n"
+            "2.Укажите варианты ответов, в которых во всех словах одного ряда пропущена одна и та же буква. "
+            "Запишите номера ответов. Ответ: ________________.\n"
+            "1. сп…ртакиада, прил…скать\n"
+            "2. кап…шон, ж…ри\n"
+            "3. верм…шель, экстр…мальный\n"
+            "4. м…нталитет, ч…столюбивый\n"
+            "5. игн…рировать, симп…тичный\n"
+            "Ключи ответов\n"
+            "2. 245\n"
+            "3. 5724613\n"
+            "4. 2, 15, 18\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        self.assertEqual(tasks[0]["answer"], "ДВУХСТА")
+        self.assertEqual(tasks[1]["answer"], "245")
+        filled = []
+        pdf_import._apply_answer_section(
+            "Ключи ответов\n3. 5724613\n4. 2, 15, 18\n",
+            filled := [
+                {"n": 3, "answer": ""},
+                {"n": 4, "answer": ""},
+            ],
+        )
+        self.assertEqual(filled[0]["answer"], "5724613")
+        self.assertEqual(filled[1]["answer"], "21518")
+
     def test_answer_without_colon_and_number_not_in_prompt(self) -> None:
         text = (
             "81.кажите варианты ответов, в которых НЕ с выделенным словом пишется СЛИТНО. "
