@@ -7,9 +7,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="mobile.css?v=3" />
-    <link rel="stylesheet" href="practice-scales.css?v=1" />
+    <link rel="stylesheet" href="styles.css?v=row-copy1" />
+    <link rel="stylesheet" href="mobile.css?v=row-copy1" />
+    <link rel="stylesheet" href="practice-scales.css?v=2" />
   </head>
   <body>
     <div id="login-screen" class="login-screen hidden">
@@ -61,6 +61,8 @@
             <div id="find-wrap" class="find-wrap">
               <button id="find-row-btn" class="secondary-btn" type="button">Найти</button>
             </div>
+            <button id="copy-table-btn" class="secondary-btn hidden" type="button">Копировать таблицу</button>
+            <button id="paste-table-btn" class="secondary-btn hidden" type="button" disabled>Вставить таблицу</button>
             <button id="settings-btn" class="secondary-btn hidden" type="button">Настройки</button>
           </div>
           <button id="preview-btn" class="secondary-btn hidden" type="button">Как видит ученик</button>
@@ -112,10 +114,14 @@
               </label>
             </fieldset>
             <fieldset>
-              <legend>День и время — даты встанут до мая</legend>
+              <legend>День и время — даты встанут до последнего занятия</legend>
               <label>
                 Дата первого занятия
                 <input id="start-date" type="date" name="startDate" required />
+              </label>
+              <label id="end-date-field">
+                Дата последнего занятия
+                <input id="end-date" type="date" name="endDate" required />
               </label>
               <label>
                 День недели
@@ -209,8 +215,8 @@
 
     <script src="app.js?v=perf-tables2"></script>
     <script src="find-date.js?v=2"></script>
-    <script src="practice-page.js?v=1"></script>
-    <script src="practice-scales.js?v=1"></script>
+    <script src="practice-page.js?v=2"></script>
+    <script src="practice-scales.js?v=2"></script>
     <script src="practice-reveal.js?v=1"></script>
     <script src="practice-lock.js?v=1"></script>
   </body>

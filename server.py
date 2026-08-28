@@ -416,6 +416,31 @@ def safe_upload_id(raw: str) -> str:
     return name
 
 
+def row_upload_ids(rows) -> set[str]:
+    result: set[str] = set()
+    if not isinstance(rows, list):
+        return result
+    id_keys = tuple(key for key in journal.FILE_KEYS if key.endswith("FileId"))
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for key in id_keys:
+            file_id = safe_upload_id(str(row.get(key) or ""))
+            if file_id:
+                result.add(file_id)
+    return result
+
+
+def upload_is_referenced(data: dict, file_id: str) -> bool:
+    safe_id = safe_upload_id(file_id)
+    if not safe_id:
+        return False
+    for student in data.get("students") or []:
+        if isinstance(student, dict) and safe_id in row_upload_ids(student.get("rows")):
+            return True
+    return False
+
+
 def parse_multipart(headers, body: bytes) -> dict:
     content_type = headers.get("Content-Type", "")
     match = re.search(r"boundary=([^;]+)", content_type, re.I)
@@ -1008,6 +1033,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/table":
             self._save_table(user)
             return
+        if path == "/api/table/copy":
+            self._copy_table(user)
+            return
         if path == "/api/schedule":
             self._save_schedule(user)
             return
@@ -1119,6 +1147,18 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"ok": False, "error": "Нужно имя ученика"}, 400)
             return
         login = login.replace(" ", "")
+        start = journal.parse_iso_date(str(payload.get("startDate") or ""))
+        slots = journal.clean_slots(payload.get("slots"), template)
+        requested_end, end_error = journal.parse_end_date_value(payload.get("endDate"))
+        if end_error:
+            self._send_json({"ok": False, "error": end_error}, 400)
+            return
+        end = None
+        if start and slots:
+            end, span_error = journal.resolve_schedule_end(start, slots, requested_end)
+            if span_error:
+                self._send_json({"ok": False, "error": span_error}, 400)
+                return
         with DATA_LOCK:
             base = login
             suffix = 2
@@ -1138,10 +1178,8 @@ class Handler(SimpleHTTPRequestHandler):
                 "password_is_initial": False,
                 "_rowsLoaded": True,
             }
-            start = journal.parse_iso_date(str(payload.get("startDate") or ""))
-            slots = journal.clean_slots(payload.get("slots"), template)
             if start and slots:
-                journal.apply_schedule(student, start, slots, template)
+                journal.apply_schedule(student, start, slots, template, end)
             data = load_data()
             data["students"].append(student)
             save_data(data, student["id"])
@@ -1241,6 +1279,40 @@ class Handler(SimpleHTTPRequestHandler):
             save_data(data, student_id)
         self._send_json({"ok": True})
 
+    def _copy_table(self, user: dict) -> None:
+        if user["role"] != "teacher":
+            self._send_json({"ok": False, "error": "Копировать таблицы может только учитель"}, 403)
+            return
+        payload = self._read_json()
+        if payload is None:
+            return
+        source_id = str(payload.get("sourceId") or "")
+        target_id = str(payload.get("targetId") or "")
+        if not source_id or not target_id or source_id == target_id:
+            self._send_json({"ok": False, "error": "Выберите двух разных учеников"}, 400)
+            return
+        with DATA_LOCK:
+            data = load_data()
+            source = find_student(data, source_id)
+            target = find_student(data, target_id)
+            if not source or not target:
+                self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
+                return
+            replaced_uploads = row_upload_ids(target.get("rows"))
+            journal.copy_student_table(source, target)
+            save_data(data, target_id)
+            for file_id in replaced_uploads:
+                if not upload_is_referenced(data, file_id):
+                    (UPLOADS_DIR / file_id).unlink(missing_ok=True)
+            saved = public_student(target)
+        self._send_json(
+            {
+                "ok": True,
+                "student": saved,
+                "sourceName": str(source.get("name") or ""),
+            }
+        )
+
     def _save_schedule(self, user: dict) -> None:
         if user["role"] != "teacher":
             self._send_json({"ok": False, "error": "Расписание задаёт учитель"}, 403)
@@ -1252,6 +1324,10 @@ class Handler(SimpleHTTPRequestHandler):
         start = journal.parse_iso_date(str(payload.get("startDate") or ""))
         template = "twice" if payload.get("template") == "twice" else "once"
         slots = journal.clean_slots(payload.get("slots"), template)
+        requested_end, end_error = journal.parse_end_date_value(payload.get("endDate"))
+        if end_error:
+            self._send_json({"ok": False, "error": end_error}, 400)
+            return
         if not start:
             self._send_json({"ok": False, "error": "Укажите дату первого занятия"}, 400)
             return
@@ -1267,16 +1343,22 @@ class Handler(SimpleHTTPRequestHandler):
             if not student:
                 self._send_json({"ok": False, "error": "Ученик не найден"}, 404)
                 return
+            fallback_end = journal.parse_iso_date(str((student.get("schedule") or {}).get("endDate") or ""))
+            end, span_error = journal.resolve_schedule_end(start, slots, requested_end, fallback_end)
+            if span_error:
+                self._send_json({"ok": False, "error": span_error}, 400)
+                return
             student["template"] = template
             name = str(payload.get("name") or "").strip()
             if name:
                 student["name"] = name
             student["schedule"] = {
                 "startDate": start.isoformat(),
+                "endDate": end.isoformat(),
                 "slots": slots,
             }
             if payload.get("regenerate", True):
-                journal.apply_schedule(student, start, slots, template)
+                journal.apply_schedule(student, start, slots, template, end)
             save_data(data, student_id)
             saved = public_student(student)
         self._send_json({"ok": True, "student": saved})
@@ -1422,7 +1504,7 @@ class Handler(SimpleHTTPRequestHandler):
                     self._send_json({"ok": False, "error": str(exc)}, 400)
                     return
                 source_key = pdf_import.canonical_source_url(url)
-            elif from_field in ("homework", "practice"):
+            elif from_field in ("homework", "practice", "theory"):
                 with DATA_LOCK:
                     data = load_data()
                     student = find_student(data, student_id)
@@ -1524,13 +1606,16 @@ class Handler(SimpleHTTPRequestHandler):
         parsed_bank = None
         import_error = ""
         imported_total = 0
-        if field in ("homework", "practice") and suffix == ".pdf":
+        if field in ("practice", "theory", "homework") and suffix == ".pdf":
             try:
                 parsed_bank = pdf_import.import_pdf_bytes(
                     uploaded["data"], original, journal.pdf_bank_id(uploaded["data"])
                 )
+                if field != "practice" and not (parsed_bank.get("tasks") or []):
+                    parsed_bank = None
             except Exception as exc:
-                import_error = str(exc) or "Не получилось разобрать PDF."
+                if field == "practice":
+                    import_error = str(exc) or "Не получилось разобрать PDF."
         with DATA_LOCK:
             data = load_data()
             student = find_student(data, student_id)
@@ -1544,19 +1629,20 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "Строка не найдена"}, 400)
                 return
             old_id = safe_upload_id(str(rows[row_index].get(f"{field}FileId") or ""))
-            if old_id:
-                (UPLOADS_DIR / old_id).unlink(missing_ok=True)
             rows[row_index][f"{field}FileId"] = stored
             rows[row_index][f"{field}FileName"] = original
             if parsed_bank:
                 try:
                     journal.save_bank(parsed_bank)
-                    rows[row_index]["bankId"] = parsed_bank["id"]
-                    rows[row_index]["importedSource"] = f"file:{stored}"
+                    if field == "practice" or not str(rows[row_index].get("bankId") or ""):
+                        rows[row_index]["bankId"] = parsed_bank["id"]
+                        rows[row_index]["importedSource"] = f"file:{stored}"
                     imported_total = len(parsed_bank.get("tasks") or [])
                 except Exception:
                     import_error = import_error or "Не получилось сохранить задания из PDF."
             save_data(data, student_id)
+            if old_id and not upload_is_referenced(data, old_id):
+                (UPLOADS_DIR / old_id).unlink(missing_ok=True)
             saved = public_student(student)
         payload = {"ok": True, "student": saved}
         if import_error:
@@ -1593,11 +1679,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "Строка не найдена"}, 400)
                 return
             old_id = safe_upload_id(str(rows[row_index].get(f"{field}FileId") or ""))
-            if old_id:
-                (UPLOADS_DIR / old_id).unlink(missing_ok=True)
             rows[row_index][f"{field}FileId"] = ""
             rows[row_index][f"{field}FileName"] = ""
             save_data(data, student_id)
+            if old_id and not upload_is_referenced(data, old_id):
+                (UPLOADS_DIR / old_id).unlink(missing_ok=True)
             saved = public_student(student)
         self._send_json({"ok": True, "student": saved})
 

@@ -1,13 +1,5 @@
 .practice-scales {
-  margin: 0 0 20px;
-  padding: 16px 20px;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(33, 28, 25, 0.06);
-  border: 1px solid #ded4c2;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: none !important;
 }
 
 .practice-scale {

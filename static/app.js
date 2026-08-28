@@ -23,6 +23,78 @@ const TEMPLATE_LABELS = {
   twice: "2 раза в неделю",
 };
 
+const TABLE_CLIPBOARD_KEY = "journal-table-clipboard-v1";
+const ROW_CLIPBOARD_KEY = "journal-row-clipboard-v1";
+const ROW_COPY_ICON =
+  '<svg class="row-tool-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4A1.3 1.3 0 0 0 3.8 10.5h1.7" fill="none" stroke="currentColor" stroke-width="1.35"/></svg>';
+const ROW_PASTE_ICON =
+  '<svg class="row-tool-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.35"/><rect x="5.5" y="1.8" width="5" height="3.2" rx="1" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M6 8.2h4M6 10.6h4" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>';
+const ROW_COPY_KEYS = [
+  "topic",
+  "theory",
+  "homework",
+  "comment",
+  "bankId",
+  "importedSource",
+  "theoryFileId",
+  "theoryFileName",
+  "homeworkFileId",
+  "homeworkFileName",
+  "practiceFileId",
+  "practiceFileName",
+];
+
+function ensureTableCopyButtons() {
+  const actions = document.getElementById("table-actions");
+  if (!actions) return;
+  const settings = document.getElementById("settings-btn");
+  if (!document.getElementById("copy-table-btn")) {
+    const button = document.createElement("button");
+    button.id = "copy-table-btn";
+    button.className = "secondary-btn hidden";
+    button.type = "button";
+    button.textContent = "Копировать таблицу";
+    actions.insertBefore(button, settings || null);
+  }
+  if (!document.getElementById("paste-table-btn")) {
+    const button = document.createElement("button");
+    button.id = "paste-table-btn";
+    button.className = "secondary-btn hidden";
+    button.type = "button";
+    button.disabled = true;
+    button.textContent = "Вставить таблицу";
+    actions.insertBefore(button, settings || null);
+  }
+}
+
+ensureTableCopyButtons();
+
+function ensureEndDateField() {
+  const start = document.getElementById("start-date");
+  if (!document.getElementById("end-date") && start) {
+    const startLabel = start.closest("label");
+    const label = document.createElement("label");
+    label.id = "end-date-field";
+    label.appendChild(document.createTextNode("Дата последнего занятия"));
+    const input = document.createElement("input");
+    input.id = "end-date";
+    input.type = "date";
+    input.name = "endDate";
+    input.required = true;
+    label.appendChild(input);
+    if (startLabel && startLabel.parentNode) {
+      startLabel.parentNode.insertBefore(label, startLabel.nextSibling);
+    }
+  }
+  const fieldset = start && start.closest("fieldset");
+  const legend = fieldset && fieldset.querySelector("legend");
+  if (legend) {
+    legend.textContent = "День и время — даты встанут до последнего занятия";
+  }
+}
+
+ensureEndDateField();
+
 const state = {
   students: [],
   banks: [],
@@ -44,6 +116,8 @@ const state = {
   pendingNewStudent: false,
   loadingTableId: null,
   tableDirty: false,
+  tableClipboard: null,
+  rowClipboard: null,
 };
 
 const els = {
@@ -69,6 +143,8 @@ const els = {
   templateSelect: document.getElementById("template-select"),
   findWrap: document.getElementById("find-wrap"),
   findRowBtn: document.getElementById("find-row-btn"),
+  copyTableBtn: document.getElementById("copy-table-btn"),
+  pasteTableBtn: document.getElementById("paste-table-btn"),
   findDialog: document.getElementById("find-dialog"),
   findForm: document.getElementById("find-form"),
   findDate: document.getElementById("find-date"),
@@ -91,6 +167,7 @@ const els = {
   studentForm: document.getElementById("student-form"),
   studentName: document.getElementById("student-name"),
   startDate: document.getElementById("start-date"),
+  endDate: document.getElementById("end-date"),
   weekday0: document.getElementById("weekday-0"),
   weekday1: document.getElementById("weekday-1"),
   time0: document.getElementById("time-0"),
@@ -112,10 +189,90 @@ const els = {
 let saveTimer = null;
 let pollTimer = null;
 let saveChain = Promise.resolve();
+let skipTableDomSync = false;
+const saveEpochByStudent = Object.create(null);
+
+function bumpSaveEpoch(studentId) {
+  const id = String(studentId || "");
+  if (!id) return 0;
+  saveEpochByStudent[id] = (saveEpochByStudent[id] || 0) + 1;
+  return saveEpochByStudent[id];
+}
+
+function cloneTableData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function tableContentScore(student) {
+  return (student && Array.isArray(student.rows) ? student.rows : []).reduce((sum, row) => {
+    if (!row || typeof row !== "object") return sum;
+    return (
+      sum +
+      ["date", "topic", "theory", "homework", "comment"].reduce(
+        (part, key) => part + String(row[key] || "").trim().length,
+        0
+      )
+    );
+  }, 0);
+}
+
+function syncTableRowsFromDom(student) {
+  if (!student || !els.tableView || els.tableView.classList.contains("hidden")) return;
+  if (state.view !== "table" || state.currentId !== student.id) return;
+  const wrap = els.tableView.querySelector(".table-wrap");
+  if (!wrap || wrap.getAttribute("data-student-id") !== String(student.id)) return;
+  if (!Array.isArray(student.rows)) student.rows = [];
+  els.tableView.querySelectorAll("textarea[data-row][data-key]").forEach((area) => {
+    const index = Number(area.dataset.row);
+    if (!Number.isInteger(index) || index < 0) return;
+    while (student.rows.length <= index) student.rows.push(emptyRow());
+    const row = student.rows[index];
+    if (!row) return;
+    row[area.dataset.key] = area.value;
+  });
+  els.tableView.querySelectorAll("select[data-role='bank']").forEach((select) => {
+    const index = Number(select.dataset.row);
+    const row = student.rows[index];
+    if (!row) return;
+    row.bankId = select.value;
+  });
+}
+
+function applyCopiedTable(target, copied) {
+  const rows = Array.isArray(copied.rowData) ? copied.rowData : [];
+  target.rows = cloneTableData(rows);
+  target.template = copied.template === "twice" ? "twice" : "once";
+  if (copied.schedule) {
+    target.schedule = cloneTableData(copied.schedule);
+  }
+}
+
+function copyableRowSnapshot(row) {
+  const source = row && typeof row === "object" ? row : emptyRow();
+  const copy = emptyRow();
+  ROW_COPY_KEYS.forEach((key) => {
+    copy[key] = String(source[key] || "");
+  });
+  copy.lessonStatus = source.lessonStatus === "held" || source.lessonStatus === "missed" ? source.lessonStatus : "";
+  return copy;
+}
+
+function applyCopiedRow(target, source) {
+  const keptDate = String((target && target.date) || "");
+  const next = copyableRowSnapshot(source);
+  next.date = keptDate;
+  if (!target || typeof target !== "object") return next;
+  Object.keys(target).forEach((key) => {
+    delete target[key];
+  });
+  Object.assign(target, next);
+  return target;
+}
 
 function emptyRow() {
   return {
     date: "",
+    lessonStatus: "",
     topic: "",
     theory: "",
     practice: "",
@@ -329,6 +486,7 @@ function updateModeChrome() {
   if (els.previewBtn) {
     els.previewBtn.classList.toggle("hidden", !isTeacherUi() || !inStudentTable);
   }
+  updateTableCopyButtons();
   document.body.classList.toggle("student-preview", isStudentView());
 }
 
@@ -370,7 +528,9 @@ async function api(path, options = {}) {
     data = {};
   }
   if (!response.ok) {
-    throw new Error(data.error || "Ошибка запроса");
+    const error = new Error(data.error || "Ошибка запроса");
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -537,7 +697,131 @@ function showCreatedAccess(name, login, password, lead) {
   els.createdBox.classList.remove("hidden");
 }
 
+function parseIsoDateValue(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+function formatIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addCalendarYears(value, years) {
+  const date = parseIsoDateValue(value);
+  if (!date) return "";
+  const month = date.getMonth();
+  date.setFullYear(date.getFullYear() + years);
+  if (date.getMonth() !== month) {
+    date.setDate(0);
+  }
+  return formatIsoDate(date);
+}
+
+function schoolYearMay(date) {
+  return date.getMonth() + 1 >= 6 ? date.getFullYear() + 1 : date.getFullYear();
+}
+
+function lastWeekdayInMay(year, weekday) {
+  const date = new Date(year, 4, 31, 12, 0, 0);
+  while ((date.getDay() + 6) % 7 !== weekday) {
+    date.setDate(date.getDate() - 1);
+  }
+  return date;
+}
+
+function defaultEndDateForStart(startValue, slots) {
+  const start = parseIsoDateValue(startValue);
+  if (!start) return "";
+  const year = schoolYearMay(start);
+  const weekdays = [];
+  if (Array.isArray(slots)) {
+    slots.forEach((item) => {
+      const weekday = Number(item && item.weekday);
+      if (Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 && !weekdays.includes(weekday)) {
+        weekdays.push(weekday);
+      }
+    });
+  }
+  if (!weekdays.length) {
+    weekdays.push((start.getDay() + 6) % 7);
+  }
+  let end = null;
+  weekdays.forEach((weekday) => {
+    const candidate = lastWeekdayInMay(year, weekday);
+    if (!end || candidate > end) end = candidate;
+  });
+  return end ? formatIsoDate(end) : "";
+}
+
+function dmyToIso(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return "";
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+function lastRowIsoDate(student) {
+  let last = "";
+  const rows = student && Array.isArray(student.rows) ? student.rows : [];
+  rows.forEach((row) => {
+    const iso = dmyToIso(String((row && row.date) || "").split(",")[0]);
+    if (iso && iso > last) last = iso;
+  });
+  return last;
+}
+
+function formSlotsForEndDate() {
+  const slots = [{ weekday: Number(els.weekday0 ? els.weekday0.value : 3) }];
+  if (els.studentForm && els.studentForm.template && els.studentForm.template.value === "twice") {
+    slots.push({ weekday: Number(els.weekday1 ? els.weekday1.value : 1) });
+  }
+  return slots;
+}
+
+function syncEndDateLimits() {
+  if (!els.endDate || !els.startDate || !els.startDate.value) return;
+  els.endDate.min = els.startDate.value;
+  const max = addCalendarYears(els.startDate.value, 4);
+  if (max) els.endDate.max = max;
+}
+
+function toDateInputValue(value) {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return dmyToIso(raw);
+}
+
+function fillEndDateValue(student) {
+  if (!els.endDate || !els.startDate) return;
+  syncEndDateLimits();
+  const startValue = els.startDate.value;
+  const schedule = (student && student.schedule) || {};
+  const stored = toDateInputValue(schedule.endDate);
+  if (stored && (!startValue || stored >= startValue)) {
+    els.endDate.value = stored;
+    return;
+  }
+  const computed = defaultEndDateForStart(startValue, formSlotsForEndDate());
+  const lastLesson = lastRowIsoDate(student);
+  els.endDate.value = lastLesson && lastLesson > computed ? lastLesson : computed;
+}
+
 function collectCreateSlots() {
+  syncStartDateWeekday();
   const template = els.studentForm.template.value === "twice" ? "twice" : "once";
   const slots = [
     { weekday: Number(els.weekday0.value), time: els.time0.value || "16:00" },
@@ -545,33 +829,253 @@ function collectCreateSlots() {
   if (template === "twice") {
     slots.push({ weekday: Number(els.weekday1.value), time: els.time1.value || "16:00" });
   }
-  return { template, slots, startDate: els.startDate.value };
+  return {
+    template,
+    slots,
+    startDate: els.startDate ? els.startDate.value : "",
+    endDate: els.endDate ? els.endDate.value : "",
+  };
+}
+
+function syncStartDateWeekday() {
+  if (!els.startDate || !els.startDate.value || !els.weekday0) return;
+  const date = new Date(`${els.startDate.value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return;
+  els.weekday0.value = String((date.getDay() + 6) % 7);
 }
 
 async function persistCurrent() {
+  const student = currentStudent();
+  if (!student || !isTeacherUi() || !student.tableReady) return saveChain;
+  if (!state.tableDirty) return saveChain;
+  syncTableRowsFromDom(student);
+  const id = student.id;
+  const epoch = saveEpochByStudent[id] || 0;
+  const payload = {
+    id,
+    rows: cloneTableData(Array.isArray(student.rows) ? student.rows : []),
+    template: student.template === "twice" ? "twice" : "once",
+  };
+  state.tableDirty = false;
   const run = async () => {
-    const student = currentStudent();
-    if (!student || !isTeacherUi() || !student.tableReady) return;
-    if (!state.tableDirty) return;
-    state.tableDirty = false;
+    if ((saveEpochByStudent[id] || 0) !== epoch) return;
+    setSaveStatus("Сохранение…");
     try {
-      setSaveStatus("Сохранение…");
       await api("/api/table", {
         method: "POST",
-        body: JSON.stringify({
-          id: student.id,
-          rows: student.rows,
-          template: student.template,
-        }),
+        body: JSON.stringify(payload),
       });
-      setSaveStatus("Сохранено");
     } catch (error) {
       state.tableDirty = true;
       throw error;
     }
+    if ((saveEpochByStudent[id] || 0) !== epoch) return;
+    setSaveStatus("Сохранено");
   };
   saveChain = saveChain.then(run, run);
   return saveChain;
+}
+
+function loadTableClipboard() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(TABLE_CLIPBOARD_KEY) || "null");
+    if (stored && stored.sourceId && stored.sourceName) {
+      state.tableClipboard = stored;
+    }
+  } catch (_error) {
+    state.tableClipboard = null;
+  }
+}
+
+function loadRowClipboard() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(ROW_CLIPBOARD_KEY) || "null");
+    if (stored && stored.row && typeof stored.row === "object") {
+      state.rowClipboard = stored;
+    }
+  } catch (_error) {
+    state.rowClipboard = null;
+  }
+}
+
+function updateRowPasteButtons() {
+  const ready = Boolean(state.rowClipboard && state.rowClipboard.row);
+  document.querySelectorAll(".row-paste-btn").forEach((button) => {
+    button.classList.toggle("is-disabled", !ready);
+    button.title = ready ? "Вставить скопированную строку" : "Сначала скопируйте строку";
+  });
+}
+
+function copyRowAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  syncTableRowsFromDom(student);
+  const row = student.rows[index];
+  if (!row) return;
+  state.rowClipboard = {
+    v: 1,
+    copiedAt: new Date().toISOString(),
+    sourceStudentId: student.id,
+    sourceName: student.name,
+    sourceRowIndex: index,
+    row: copyableRowSnapshot(row),
+  };
+  try {
+    sessionStorage.setItem(ROW_CLIPBOARD_KEY, JSON.stringify(state.rowClipboard));
+  } catch (_error) {
+    /* Буфер всё равно действует, пока открыта эта страница. */
+  }
+  updateRowPasteButtons();
+  setSaveStatus("Строка скопирована");
+}
+
+async function pasteRowAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  const copied = state.rowClipboard && state.rowClipboard.row;
+  if (!copied) {
+    setSaveStatus("Сначала скопируйте строку");
+    return;
+  }
+  if (state.rowClipboard.sourceStudentId === student.id && Number(state.rowClipboard.sourceRowIndex) === Number(index)) {
+    setSaveStatus("Это та же строка — вставьте в другую");
+    return;
+  }
+  clearTimeout(saveTimer);
+  await saveChain.catch(() => {});
+  syncTableRowsFromDom(student);
+  while (student.rows.length <= index) student.rows.push(emptyRow());
+  const target = student.rows[index];
+  if (!target) return;
+  bumpSaveEpoch(student.id);
+  applyCopiedRow(target, copied);
+  skipTableDomSync = true;
+  renderTable();
+  await persistCurrent();
+  try {
+    const stayOn = student.id;
+    await loadStudents();
+    state.currentId = stayOn;
+  } catch (_error) {
+    /* локальная вставка уже на экране */
+  }
+  skipTableDomSync = true;
+  renderTable();
+  setSaveStatus("Строка вставлена — можно сразу править");
+}
+
+function updateTableCopyButtons() {
+  const teacherTable = isTeacherUi() && state.view === "table" && Boolean(currentStudent());
+  if (els.copyTableBtn) {
+    els.copyTableBtn.classList.toggle("hidden", !teacherTable);
+  }
+  if (els.pasteTableBtn) {
+    els.pasteTableBtn.classList.toggle("hidden", !teacherTable);
+    const sameStudent =
+      state.tableClipboard && currentStudent() && state.tableClipboard.sourceId === currentStudent().id;
+    els.pasteTableBtn.disabled = !state.tableClipboard || Boolean(sameStudent);
+    els.pasteTableBtn.title = state.tableClipboard
+      ? sameStudent
+        ? "Откройте таблицу другого ученика"
+        : `Вставить таблицу ученика «${state.tableClipboard.sourceName}»`
+      : "Сначала скопируйте таблицу ученика";
+  }
+}
+
+async function copyCurrentTable() {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  clearTimeout(saveTimer);
+  syncTableRowsFromDom(student);
+  await persistCurrent();
+  state.tableClipboard = {
+    sourceId: student.id,
+    sourceName: student.name,
+    rows: Array.isArray(student.rows) ? student.rows.length : 0,
+    rowData: cloneTableData(Array.isArray(student.rows) ? student.rows : []),
+    template: student.template === "twice" ? "twice" : "once",
+    schedule: student.schedule ? cloneTableData(student.schedule) : null,
+  };
+  try {
+    sessionStorage.setItem(TABLE_CLIPBOARD_KEY, JSON.stringify(state.tableClipboard));
+  } catch (_error) {
+    /* Буфер всё равно действует, пока открыта эта страница. */
+  }
+  updateTableCopyButtons();
+  setSaveStatus(`Таблица «${student.name}» скопирована: ${state.tableClipboard.rows} строк`);
+}
+
+async function pasteCopiedTable() {
+  const target = currentStudent();
+  const copied = state.tableClipboard;
+  if (!target || !copied || !isTeacherUi() || target.id === copied.sourceId) return;
+  if (!Array.isArray(copied.rowData) || !copied.rowData.length) {
+    const source = state.students.find((item) => item.id === copied.sourceId);
+    if (source && Array.isArray(source.rows)) {
+      copied.rowData = cloneTableData(source.rows);
+      copied.template = source.template === "twice" ? "twice" : copied.template;
+      copied.schedule = source.schedule ? cloneTableData(source.schedule) : copied.schedule;
+    }
+  }
+  if (!Array.isArray(copied.rowData)) {
+    throw new Error("Сначала скопируйте таблицу ещё раз — буфер оказался пустым.");
+  }
+  const approved = confirm(
+    `Заменить таблицу ученика «${target.name}» таблицей ученика «${copied.sourceName}»?\n\n` +
+      "Даты, темы, материалы, задания и отметки занятий будут скопированы полностью. " +
+      "Личные ответы и прогресс учеников не копируются."
+  );
+  if (!approved) return;
+  clearTimeout(saveTimer);
+  await saveChain.catch(() => {});
+  bumpSaveEpoch(target.id);
+  applyCopiedTable(target, copied);
+  skipTableDomSync = true;
+  renderTable();
+  setSaveStatus("Вставляю таблицу…");
+  let data = { student: target };
+  try {
+    data = await api("/api/table/copy", {
+      method: "POST",
+      body: JSON.stringify({ sourceId: copied.sourceId, targetId: target.id }),
+    });
+  } catch (error) {
+    if (error.status !== 404 && error.status !== 405) throw error;
+    const schedule = copied.schedule;
+    if (schedule && schedule.startDate && Array.isArray(schedule.slots) && schedule.slots.length) {
+      try {
+        await api("/api/schedule", {
+          method: "POST",
+          body: JSON.stringify({
+            id: target.id,
+            name: target.name,
+            template: copied.template,
+            startDate: schedule.startDate,
+            endDate: schedule.endDate || "",
+            slots: schedule.slots,
+            regenerate: false,
+          }),
+        });
+      } catch (_scheduleError) {
+        /* строки всё равно сохраняем через /api/table */
+      }
+    }
+    data = await api("/api/table", {
+      method: "POST",
+      body: JSON.stringify({
+        id: target.id,
+        rows: cloneTableData(target.rows),
+        template: target.template,
+      }),
+    });
+  }
+    if (data && data.student) {
+      replaceStudent(data.student, { keepRicher: true });
+    }
+  await persistCurrent();
+  skipTableDomSync = true;
+  renderTable();
+  setSaveStatus(`Таблица «${copied.sourceName}» вставлена ученику «${target.name}»`);
 }
 
 function scheduleSave() {
@@ -579,7 +1083,7 @@ function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     persistCurrent()
-      .then(() => importHomeworkPdfs(currentStudent()))
+      .then(() => importLinkedPdfs(currentStudent()))
       .then((changed) => {
         if (changed && state.view === "table") renderTable();
       })
@@ -603,6 +1107,7 @@ function fillStudentForm(student) {
   els.weekday1.value = String(slots[1] ? slots[1].weekday : 1);
   els.time1.value = (slots[1] && slots[1].time) || "16:00";
   toggleSecondSlot();
+  fillEndDateValue(student);
 }
 
 function openModal() {
@@ -681,7 +1186,7 @@ function renderList() {
     els.listView.innerHTML = `
       <div class="empty-state">
         <p>Пока нет учеников.</p>
-        <p>Добавьте ученика, укажите день и время — даты встанут до последнего такого дня в мае.</p>
+        <p>Добавьте ученика, укажите день, время и дату последнего занятия.</p>
       </div>
     `;
     return;
@@ -751,6 +1256,7 @@ function bankSelectHtml(rowIndex, selected) {
 
 function rowHasLessonContent(row) {
   if (!row || typeof row !== "object") return false;
+  if (["held", "missed"].includes(row.lessonStatus)) return true;
   if (["topic", "theory", "homework", "comment"].some((key) => String(row[key] || "").trim())) {
     return true;
   }
@@ -796,6 +1302,8 @@ function renderTable() {
     openStudentTable(student.id, state.previewAsStudent);
     return;
   }
+  if (!skipTableDomSync) syncTableRowsFromDom(student);
+  skipTableDomSync = false;
   if (!isTeacherUi()) hideRowConfirm();
   document.body.classList.remove("practice-open");
 
@@ -819,6 +1327,7 @@ function renderTable() {
   if (els.settingsBtn) {
     els.settingsBtn.classList.toggle("hidden", !isTeacherUi());
   }
+  updateTableCopyButtons();
   els.pageTitle.textContent = student.name;
   els.pageSubtitle.textContent = isStudentView()
     ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
@@ -850,6 +1359,44 @@ function renderTable() {
       const row = student.rows[rowIndex];
       const upcoming = isStudentView() && !rowHasLessonContent(row);
       const cells = COLUMNS.map((column) => {
+        if (column.key === "date") {
+          const status = ["held", "missed"].includes(row.lessonStatus) ? row.lessonStatus : "";
+          const readonly = isStudentView() ? "readonly" : "";
+          const controls = isTeacherUi()
+            ? `<div class="lesson-status-controls" role="group" aria-label="Состоялось ли занятие">
+                <button class="lesson-status-btn status-held" type="button" data-row="${rowIndex}" data-status="held" aria-pressed="${
+                  status === "held"
+                }">Было</button>
+                <button class="lesson-status-btn status-missed" type="button" data-row="${rowIndex}" data-status="missed" aria-pressed="${
+                  status === "missed"
+                }">Не было</button>
+              </div>`
+            : status
+              ? `<span class="lesson-status-badge status-${status}">${
+                  status === "held" ? "✓ Было занятие" : "× Занятия не было"
+                }</span>`
+              : "";
+          const pasteReady = Boolean(state.rowClipboard && state.rowClipboard.row);
+          const rowTools = isTeacherUi()
+            ? `<div class="date-row-tools">
+                <button class="row-copy-btn" type="button" data-row="${rowIndex}" title="Скопировать строку" aria-label="Скопировать строку">${ROW_COPY_ICON}</button>
+                <button class="row-paste-btn${pasteReady ? "" : " is-disabled"}" type="button" data-row="${rowIndex}" title="${
+                  pasteReady ? "Вставить скопированную строку" : "Сначала скопируйте строку"
+                }" aria-label="Вставить строку">${ROW_PASTE_ICON}</button>
+              </div>`
+            : "";
+          return `<td class="col-date" data-label="${escapeHtml(column.label)}">
+            <div class="date-cell">
+              <textarea class="cell-fill" data-row="${rowIndex}" data-key="date" rows="1" spellcheck="false" placeholder="например 10.09.2026, 17:00" ${readonly}>${escapeHtml(
+                String(row.date || "")
+              )}</textarea>
+              <div class="date-cell-bottom">
+                ${controls}
+                ${rowTools}
+              </div>
+            </div>
+          </td>`;
+        }
         if (column.key === "practice") {
           const fraction = row.bankId ? row.practice || "0/0" : "—";
           const teacherSelect = isTeacherUi()
@@ -885,9 +1432,8 @@ function renderTable() {
         const value = row[column.key] ?? "";
         const locked = isStudentView();
         const readonly = locked ? "readonly" : "";
-        const placeholder = column.key === "date" ? 'placeholder="например 10.09.2026, 17:00"' : "";
         return `<td class="${column.className}" data-label="${escapeHtml(column.label)}">
-          <textarea class="cell-fill" data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false" ${placeholder} ${readonly}>${escapeHtml(
+          <textarea class="cell-fill" data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false" ${readonly}>${escapeHtml(
             String(value)
           )}</textarea>
         </td>`;
@@ -899,6 +1445,8 @@ function renderTable() {
         : "";
       const classes = [];
       if (upcoming) classes.push("lesson-upcoming");
+      if (row.lessonStatus === "held") classes.push("lesson-held");
+      if (row.lessonStatus === "missed") classes.push("lesson-missed");
       const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";
       return `<tr${classAttr} data-row="${rowIndex}">${tools}${cells}</tr>${
         isTeacherUi() ? insertGap(rowIndex + 1) : ""
@@ -909,13 +1457,20 @@ function renderTable() {
     : rowIndexes.map(renderLessonRow).join("");
 
   els.tableView.innerHTML = `
-    <div class="table-wrap">
+    <div class="table-wrap${isTeacherUi() ? " teacher-table" : ""}" data-student-id="${escapeHtml(String(student.id || ""))}">
       <table>
         <thead><tr>${head}</tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>
   `;
+  if (isTeacherUi()) {
+    importLinkedPdfs(student)
+      .then((changed) => {
+        if (changed && state.view === "table" && state.currentId === student.id) renderTable();
+      })
+      .catch(() => {});
+  }
 }
 
 function closePractice() {
@@ -928,9 +1483,64 @@ function closePractice() {
     .catch((error) => setSaveStatus(error.message));
 }
 
-async function openPractice(bankId) {
+function capturePracticeScroll(taskN) {
+  const view = els.practiceView;
+  const card =
+    taskN != null && view ? view.querySelector(`.task-card[data-n="${taskN}"]`) : null;
+  return {
+    windowY: window.scrollY || window.pageYOffset || 0,
+    viewY: view ? view.scrollTop : 0,
+    cardTop: card ? card.getBoundingClientRect().top : null,
+    taskN,
+  };
+}
+
+function restorePracticeScroll(snapshot, taskN, role) {
+  const n = taskN != null ? taskN : snapshot && snapshot.taskN;
+  const apply = () => {
+    const view = els.practiceView;
+    if (!view) return;
+    const card = n != null ? view.querySelector(`.task-card[data-n="${n}"]`) : null;
+    if (card && snapshot && snapshot.cardTop != null) {
+      const delta = card.getBoundingClientRect().top - snapshot.cardTop;
+      if (Math.abs(delta) >= 1) {
+        view.scrollTop += delta;
+      }
+      const still = card.getBoundingClientRect().top - snapshot.cardTop;
+      if (Math.abs(still) >= 1) {
+        window.scrollBy(0, still);
+      }
+    } else if (snapshot) {
+      window.scrollTo(0, snapshot.windowY);
+      view.scrollTop = snapshot.viewY;
+    }
+    const input =
+      role && n != null
+        ? view.querySelector(`input[data-role="${role}"][data-n="${n}"]`)
+        : null;
+    if (input && !input.readOnly) {
+      try {
+        input.focus({ preventScroll: true });
+      } catch (_error) {
+        /* не вызываем focus() без preventScroll — это снова уводит вверх */
+      }
+    }
+  };
+  apply();
+  queueMicrotask(apply);
+  requestAnimationFrame(() => {
+    apply();
+    requestAnimationFrame(apply);
+  });
+  setTimeout(apply, 0);
+  setTimeout(apply, 32);
+}
+
+async function openPractice(bankId, options = {}) {
   const student = currentStudent();
   if (!student || !bankId) return;
+  const keepScroll = Boolean(options.keepScroll);
+  const snapshot = keepScroll ? capturePracticeScroll(options.focusN) : null;
   hideRowConfirm();
   hideFindDialog();
   const asStudent = isStudentView() ? "&asStudent=1" : "";
@@ -955,8 +1565,12 @@ async function openPractice(bankId) {
   updateModeChrome();
   updateShareBar();
   renderPractice();
-  window.scrollTo(0, 0);
-  els.practiceView.scrollTop = 0;
+  if (keepScroll) {
+    restorePracticeScroll(snapshot, options.focusN, options.focusRole);
+  } else {
+    window.scrollTo(0, 0);
+    els.practiceView.scrollTop = 0;
+  }
 }
 
 function renderPractice() {
@@ -966,25 +1580,32 @@ function renderPractice() {
   const total = Number(stats.total) || 0;
   const done = Number(stats.done) || 0;
   const correct = Number(stats.correct) || 0;
-  const donePercent = Number(stats.donePercent);
-  const accuracyPercent = Number(stats.accuracyPercent);
-  const doneWidth = Number.isFinite(donePercent) ? donePercent : Number(stats.percent) || 0;
-  const accuracyWidth = Number.isFinite(accuracyPercent)
-    ? accuracyPercent
-    : done
-      ? Math.round(100 * correct / done)
-      : 0;
+  const percent = Number(stats.percent) || 0;
   const color = data.statsColor || "red";
+  const wordBank =
+    (data.tasks || []).length > 0 &&
+    (data.tasks || []).every((task) => task.kind === "phrases" || task.kind === "word" || task.word);
+  const statsHint = wordBank
+    ? "Запишите слово, как в бланке ЕГЭ."
+    : "Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.";
   const tasks = (data.tasks || [])
     .map((task) => {
       const optionItems = (task.options || []).filter(Boolean);
+      const isPhrases = task.kind === "phrases";
+      const isWord = Boolean(task.word) || task.kind === "word" || isPhrases;
+      const listTag = isPhrases ? "ul" : "ol";
+      const skip = `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`;
       const options = optionItems.length
-        ? `<ol class="task-options">${optionItems.map((option) => `<li>${escapeHtml(option)}</li>`).join("")}</ol>`
+        ? `${skip}<${listTag} class="task-options${isPhrases ? " task-phrases" : ""}">${optionItems
+            .map((option) => `<li>${escapeHtml(option)}</li>`)
+            .join("")}</${listTag}>`
         : "";
+      const answerPlaceholder = isWord ? "слово" : "245 или 2, 4, 5";
+      const keyPlaceholder = isWord ? "например слово" : "например 245";
       const keyField = isTeacherUi()
         ? `<label class="task-field-label">Ключ <input class="key-input" data-n="${task.n}" data-role="key" value="${escapeHtml(
             task.answer || ""
-          )}" placeholder="например 245" /></label>`
+          )}" placeholder="${keyPlaceholder}" /></label>`
         : "";
       const correctAnswer = task.correctAnswer || "";
       const correctReveal =
@@ -1001,11 +1622,11 @@ function renderPractice() {
             <span class="task-badge">№ ${task.n}</span>
             <span class="task-tag">Задание ЕГЭ</span>
           </div>
-          <p class="task-prompt">${escapeHtml(task.prompt || data.instruction || "")}</p>
+          ${renderTaskPrompt(task.prompt || data.instruction || "")}
           ${options}
           <div class="task-actions">
             <label class="task-field-label">Ответ ученика
-              <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="245 или 2, 4, 5" ${locked ? "readonly" : ""} />
+              <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="${answerPlaceholder}" ${locked ? "readonly" : ""} />
             </label>
             ${saveControl}
             ${keyField}
@@ -1023,26 +1644,9 @@ function renderPractice() {
         <button class="primary-btn practice-back" type="button">← К таблице</button>
         <h2>${escapeHtml(data.title || "Задания")}</h2>
       </div>
-      <div class="practice-scales">
-        <div class="practice-scale">
-          <div class="scale-head">
-            <span>Сделано</span>
-            <strong>${done} из ${total}</strong>
-          </div>
-          <div class="scale-track" aria-label="Сделано ${done} из ${total}">
-            <div class="scale-fill progress-${color}" style="width: ${Math.max(0, Math.min(100, doneWidth))}%"></div>
-          </div>
-        </div>
-        <div class="practice-scale">
-          <div class="scale-head">
-            <span>Верно</span>
-            <strong>${correct} из ${done}</strong>
-          </div>
-          <div class="scale-track" aria-label="Верно ${correct} из ${done}">
-            <div class="scale-fill scale-accuracy" style="width: ${Math.max(0, Math.min(100, accuracyWidth))}%"></div>
-          </div>
-        </div>
-        <p class="stats-hint">Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.</p>
+      <div class="practice-summary progress-${escapeHtml(color)}">
+        <div class="stats-text">Выполнено: ${done} из ${total}. Верно: ${correct} из ${total} (${percent}%).</div>
+        <div class="stats-hint">${escapeHtml(statsHint)}</div>
       </div>
       <div class="task-list">${tasks}</div>
     </div>
@@ -1060,6 +1664,26 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function formatTaskPrompt(text) {
+  let raw = String(text || "").replace(/\r/g, "");
+  raw = raw.replace(
+    /(Запишите номера этих предложений|Запишите номера ответов|запишите слово правильно|Запишите это слово)\.?\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«"])/gi,
+    "$1.\n\n"
+  );
+  raw = raw.replace(/\n{3,}/g, "\n\n");
+  return raw;
+}
+
+function renderTaskPrompt(text) {
+  const raw = formatTaskPrompt(text).trim();
+  const parts = raw.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  const skip = `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`;
+  const blocks = (parts.length ? parts : [raw]).map(
+    (part) => `<p class="task-prompt">${escapeHtml(part).replaceAll("\n", "<br>")}</p>`
+  );
+  return blocks.join(skip);
 }
 
 function linkifyText(text) {
@@ -1098,22 +1722,36 @@ function isPdfUrl(url) {
 const importFailed = new Set();
 let importInFlight = false;
 
-async function importHomeworkPdfs(student) {
+async function importLinkedPdfs(student) {
   if (!student || !isTeacherUi() || !state.pdfImport || importInFlight) return false;
   let changed = false;
   for (let index = 0; index < (student.rows || []).length; index += 1) {
     const row = student.rows[index];
-    const url = firstPdfUrl(row.homework);
-    if (!url || url === row.importedSource) continue;
     if (String(row.importedSource || "").startsWith("manual:")) continue;
-    const key = `${student.id}:${index}:${url}`;
+    const url = firstPdfUrl(row.homework) || firstPdfUrl(row.theory);
+    let payload = null;
+    if (url && url !== row.importedSource) {
+      payload = { studentId: student.id, row: index, url };
+    } else if (!row.bankId) {
+      const field = ["practice", "theory", "homework"].find(
+        (name) =>
+          String(row[`${name}FileName`] || "")
+            .toLowerCase()
+            .endsWith(".pdf") && row[`${name}FileId`]
+      );
+      if (field) {
+        payload = { studentId: student.id, row: index, fromField: field };
+      }
+    }
+    if (!payload) continue;
+    const key = `${student.id}:${index}:${payload.url || payload.fromField}:${row.theoryFileId || ""}`;
     if (importFailed.has(key)) continue;
     importInFlight = true;
     setSaveStatus("Разбираю PDF…");
     try {
       const data = await api("/api/import-pdf", {
         method: "POST",
-        body: JSON.stringify({ studentId: student.id, row: index, url }),
+        body: JSON.stringify(payload),
       });
       replaceStudent(data.student);
       await loadBanks();
@@ -1184,11 +1822,24 @@ async function goToStudentList() {
   renderList();
 }
 
-function replaceStudent(student) {
+function replaceStudent(student, options = {}) {
   if (!student || !student.id) return;
   const index = state.students.findIndex((item) => item.id === student.id);
-  if (index >= 0) state.students[index] = student;
-  else state.students.push(student);
+  if (index < 0) {
+    state.students.push(student);
+    return;
+  }
+  const current = state.students[index];
+  if (options.keepRicher && current && tableContentScore(current) > tableContentScore(student)) {
+    student = {
+      ...student,
+      rows: cloneTableData(current.rows || []),
+      template: current.template || student.template,
+      schedule: current.schedule || student.schedule,
+    };
+  }
+  state.students[index] = student;
+  skipTableDomSync = true;
 }
 
 function afterLogin() {
@@ -1208,6 +1859,22 @@ if (els.settingsBtn) {
     if (state.currentId) openSettings(state.currentId);
   });
 }
+if (els.copyTableBtn) {
+  els.copyTableBtn.addEventListener("click", () => {
+    copyCurrentTable().catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+  });
+}
+if (els.pasteTableBtn) {
+  els.pasteTableBtn.addEventListener("click", () => {
+    pasteCopiedTable().catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+  });
+}
 if (els.previewBtn) {
   els.previewBtn.addEventListener("click", () => {
     if (state.currentId) enterStudentPreview(state.currentId);
@@ -1223,13 +1890,20 @@ els.modal.addEventListener("click", (event) => {
 els.studentForm.addEventListener("change", (event) => {
   if (event.target.name === "template") toggleSecondSlot();
 });
-els.startDate.addEventListener("change", () => {
-  if (!els.startDate.value) return;
-  const date = new Date(`${els.startDate.value}T12:00:00`);
-  if (!Number.isNaN(date.getTime())) {
-    els.weekday0.value = String((date.getDay() + 6) % 7);
-  }
-});
+if (els.startDate) {
+  const onStartDateChange = () => {
+    syncStartDateWeekday();
+    if (!els.endDate) return;
+    syncEndDateLimits();
+    const startValue = els.startDate.value;
+    if (!startValue) return;
+    if (!els.endDate.value || els.endDate.value < startValue) {
+      els.endDate.value = defaultEndDateForStart(startValue, formSlotsForEndDate());
+    }
+  };
+  els.startDate.addEventListener("change", onStartDateChange);
+  els.startDate.addEventListener("input", onStartDateChange);
+}
 els.backBtn.addEventListener("click", () => {
   if (state.view === "practice") {
     closePractice();
@@ -1237,14 +1911,16 @@ els.backBtn.addEventListener("click", () => {
   }
   goToStudentList();
 });
-els.templateSelect.addEventListener("change", () => {
-  const student = currentStudent();
-  if (!student || !isTeacherUi()) return;
-  student.template = els.templateSelect.value;
-  const second = document.getElementById("table-second-slot");
-  if (second) second.classList.toggle("hidden", student.template !== "twice");
-  scheduleSave();
-});
+if (els.templateSelect) {
+  els.templateSelect.addEventListener("change", () => {
+    const student = currentStudent();
+    if (!student || !isTeacherUi()) return;
+    student.template = els.templateSelect.value;
+    const second = document.getElementById("table-second-slot");
+    if (second) second.classList.toggle("hidden", student.template !== "twice");
+    scheduleSave();
+  });
+}
 if (els.findRowBtn) {
   els.findRowBtn.addEventListener("click", () => {
     if (!currentStudent()) {
@@ -1312,9 +1988,16 @@ els.studentForm.addEventListener("submit", async (event) => {
     els.modalError.textContent = "Нужно имя ученика";
     return;
   }
-  const { template, slots, startDate } = collectCreateSlots();
+  const { template, slots, startDate, endDate } = collectCreateSlots();
+  if (startDate && endDate && endDate < startDate) {
+    els.modalError.textContent = "Дата последнего занятия не может быть раньше первого";
+    return;
+  }
   try {
     if (state.settingsStudentId) {
+      clearTimeout(saveTimer);
+      await saveChain.catch(() => {});
+      bumpSaveEpoch(state.settingsStudentId);
       const data = await api("/api/schedule", {
         method: "POST",
         body: JSON.stringify({
@@ -1322,6 +2005,7 @@ els.studentForm.addEventListener("submit", async (event) => {
           name,
           template,
           startDate,
+          endDate,
           slots,
           regenerate: true,
         }),
@@ -1335,7 +2019,7 @@ els.studentForm.addEventListener("submit", async (event) => {
     }
     const data = await api("/api/students", {
       method: "POST",
-      body: JSON.stringify({ name, template, startDate, slots }),
+      body: JSON.stringify({ name, template, startDate, endDate, slots }),
     });
     state.students.push(data.student);
     state.currentId = data.student.id;
@@ -1465,7 +2149,41 @@ els.tableView.addEventListener("change", (event) => {
     .catch((error) => setSaveStatus(error.message));
 });
 
+els.tableView.addEventListener("mousedown", (event) => {
+  if (event.target.closest(".row-copy-btn, .row-paste-btn")) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+});
+
 els.tableView.addEventListener("click", async (event) => {
+  const copyRowBtn = event.target.closest(".row-copy-btn");
+  if (copyRowBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    copyRowAt(Number(copyRowBtn.dataset.row));
+    return;
+  }
+  const pasteRowBtn = event.target.closest(".row-paste-btn");
+  if (pasteRowBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    pasteRowAt(Number(pasteRowBtn.dataset.row)).catch((error) => {
+      setSaveStatus(error.message);
+    });
+    return;
+  }
+  const statusBtn = event.target.closest(".lesson-status-btn");
+  if (statusBtn) {
+    const student = currentStudent();
+    const row = student && student.rows[Number(statusBtn.dataset.row)];
+    if (!row || !isTeacherUi()) return;
+    const selected = statusBtn.dataset.status;
+    row.lessonStatus = row.lessonStatus === selected ? "" : selected;
+    scheduleSave();
+    renderTable();
+    return;
+  }
   const insertBtn = event.target.closest(".insert-lesson");
   if (insertBtn) {
     insertLessonAt(Number(insertBtn.dataset.insert));
@@ -1521,8 +2239,9 @@ els.practiceView.addEventListener("click", async (event) => {
   const student = currentStudent();
   const practice = state.practice;
   if (!student || !practice) return;
-  const n = Number(event.target.dataset.n);
-  if (event.target.closest(".save-answer")) {
+  const saveAnswer = event.target.closest(".save-answer");
+  if (saveAnswer) {
+    const n = Number(saveAnswer.dataset.n);
     if (!isTeacherUi()) {
       const task = (practice.tasks || []).find((item) => Number(item.n) === n);
       if (task && String(task.given || "").trim()) {
@@ -1541,15 +2260,17 @@ els.practiceView.addEventListener("click", async (event) => {
           answer: input ? input.value : "",
         }),
       });
-      await openPractice(practice.id);
+      await openPractice(practice.id, { keepScroll: true, focusN: n, focusRole: "given" });
       setSaveStatus(`Сохранено, ${data.stats.done}/${data.stats.total}`);
     } catch (error) {
       alert(error.message);
     }
     return;
   }
-  if (event.target.closest(".save-key")) {
+  const saveKey = event.target.closest(".save-key");
+  if (saveKey) {
     if (!isTeacherUi()) return;
+    const n = Number(saveKey.dataset.n);
     const input = els.practiceView.querySelector(`input[data-role='key'][data-n='${n}']`);
     try {
       await api("/api/bank-key", {
@@ -1560,7 +2281,7 @@ els.practiceView.addEventListener("click", async (event) => {
           answer: input ? input.value : "",
         }),
       });
-      await openPractice(practice.id);
+      await openPractice(practice.id, { keepScroll: true, focusN: n, focusRole: "key" });
       setSaveStatus("Ключ сохранён");
     } catch (error) {
       alert(error.message);
@@ -1698,6 +2419,8 @@ async function enterApp() {
 }
 
 async function start() {
+  loadTableClipboard();
+  loadRowClipboard();
   try {
     const session = await loadSession();
     if (!session.user) {

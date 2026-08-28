@@ -16,11 +16,10 @@
       bar.innerHTML = '<button type="button" class="primary-btn practice-back">← К таблице</button>';
       view.insertBefore(bar, view.firstChild);
     }
-    view.scrollTop = 0;
   }
 
   var observer = new MutationObserver(sync);
-  observer.observe(view, { attributes: true, attributeFilter: ["class"], childList: true, subtree: true });
+  observer.observe(view, { attributes: true, attributeFilter: ["class"], childList: true });
   document.addEventListener(
     "click",
     function (event) {
