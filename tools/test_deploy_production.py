@@ -36,7 +36,12 @@ class DeployProductionTest(unittest.TestCase):
         (self.stage / "journal.py").write_text("VALUE = 'stage-journal'\n", encoding="utf-8")
         (self.stage / "pdf_import.py").write_text("VALUE = 'stage-pdf'\n", encoding="utf-8")
         (self.stage / "static" / "app.js").write_text(
-            "const copy = 'copy-table-btn';\nconst status = 'lesson-status-btn';\nconst summary = 'practice-summary';\n",
+            "const copy = 'copy-table-btn';\nconst status = 'lesson-status-btn';\nconst summary = 'practice-summary';\n"
+            "function restorePracticeScroll() {}\nconst keepScroll = true;\n",
+            encoding="utf-8",
+        )
+        (self.stage / "static" / "practice-page.js").write_text(
+            "document.body.classList.toggle('practice-open');\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "styles.css").write_text(".stage-styles {}\n", encoding="utf-8")
@@ -52,6 +57,7 @@ class DeployProductionTest(unittest.TestCase):
             '<link rel="stylesheet" href="mobile.css?v=old" />\n'
             '<link rel="stylesheet" href="practice-scales.css?v=1" />\n'
             '<script src="app.js?v=old"></script>\n'
+            '<script src="practice-page.js?v=1"></script>\n'
             '<script src="practice-scales.js?v=1"></script>\n',
             encoding="utf-8",
         )
@@ -81,7 +87,8 @@ class DeployProductionTest(unittest.TestCase):
         text = path.read_text(encoding="utf-8")
         self.assertIn("styles.css?v=table-tools3", text)
         self.assertIn("mobile.css?v=table-tools3", text)
-        self.assertIn("app.js?v=table-tools3", text)
+        self.assertIn("app.js?v=keep-scroll1", text)
+        self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
         self.assertNotIn("?v=old", text)
@@ -99,8 +106,9 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("ГОТОВО. ВСЕ ИЗМЕНЕНИЯ УСТАНОВЛЕНЫ.", result.stdout)
         self.assertEqual((self.app / "journal.py").read_text(encoding="utf-8"), "VALUE = 'stage-journal'\n")
         self.assertEqual((self.app / "server.py").read_text(encoding="utf-8"), "PORT = 8765\n")
-        self.assertIn("copy-table-btn", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("table-tools3", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
+        self.assertIn("keep-scroll1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 
     def test_python_script_runs_with_windows_crlf(self) -> None:

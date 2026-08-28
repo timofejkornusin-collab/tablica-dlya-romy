@@ -45,18 +45,22 @@ REQUIRED = (
     "static/mobile.css",
     "static/practice-scales.js",
     "static/practice-scales.css",
+    "static/practice-page.js",
 )
 
 APP_MARKERS = (
     "copy-table-btn",
     "lesson-status-btn",
     "practice-summary",
+    "restorePracticeScroll",
+    "keepScroll",
 )
 
 CACHE_BUSTERS = {
     r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=table-tools3",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=table-tools3",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=table-tools3",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=keep-scroll1",
+    r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
 }
@@ -154,6 +158,9 @@ def require_python_and_markers() -> None:
     missing = [marker for marker in APP_MARKERS if marker not in app_js]
     if missing:
         fail("ОШИБКА: загружена не та версия app.js. Сайт не изменён.")
+    page_js = (STAGE / "static" / "practice-page.js").read_text(encoding="utf-8", errors="replace")
+    if "scrollTop = 0" in page_js or "scrollTop=0" in page_js:
+        fail("ОШИБКА: practice-page.js снова сбрасывает прокрутку. Сайт не изменён.")
 
 
 def backup_current() -> None:
@@ -170,6 +177,7 @@ def backup_current() -> None:
         fail("ОШИБКА: резервная копия не создана. Сайт не изменён.")
     copy_if_exists(STATIC_ROOT / "practice-scales.js", BACKUP / "static" / "practice-scales.js")
     copy_if_exists(STATIC_ROOT / "practice-scales.css", BACKUP / "static" / "practice-scales.css")
+    copy_if_exists(STATIC_ROOT / "practice-page.js", BACKUP / "static" / "practice-page.js")
     copy_if_exists(APP_ROOT / "data" / "students.json", BACKUP / "data" / "students.json")
 
 
@@ -182,6 +190,7 @@ def install_stage() -> None:
         install_file(STAGE / "static" / "mobile.css", STATIC_ROOT / "mobile.css")
         install_file(STAGE / "static" / "practice-scales.js", STATIC_ROOT / "practice-scales.js")
         install_file(STAGE / "static" / "practice-scales.css", STATIC_ROOT / "practice-scales.css")
+        install_file(STAGE / "static" / "practice-page.js", STATIC_ROOT / "practice-page.js")
         patch_index(STATIC_ROOT / "index.html")
     except Exception:
         restore_files()
@@ -191,8 +200,8 @@ def install_stage() -> None:
 def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
-    app_marker = "1" if "copy-table-btn" in installed_app else "0"
-    index_marker = "1" if "table-tools3" in installed_index else "0"
+    app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
+    index_marker = "1" if "keep-scroll1" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -203,8 +212,8 @@ def verify_live() -> tuple[str, str, str]:
         local_code = curl_code(LOCAL_URL + "/")
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
-        app_marker = str(live_app.count("copy-table-btn"))
-        index_marker = str(live_index.count("table-tools3"))
+        app_marker = str(live_app.count("restorePracticeScroll"))
+        index_marker = str(live_index.count("keep-scroll1"))
         api_code = curl_code(LOCAL_URL + "/api/students")
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)

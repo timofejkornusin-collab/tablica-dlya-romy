@@ -978,9 +978,47 @@ function closePractice() {
   loadStudents().then(renderTable).catch((error) => setSaveStatus(error.message));
 }
 
-async function openPractice(bankId) {
+function capturePracticeScroll() {
+  return {
+    windowY: window.scrollY || window.pageYOffset || 0,
+    viewY: els.practiceView ? els.practiceView.scrollTop : 0,
+  };
+}
+
+function restorePracticeScroll(snapshot, taskN, role) {
+  const apply = () => {
+    if (snapshot) {
+      window.scrollTo(0, snapshot.windowY);
+      if (els.practiceView) els.practiceView.scrollTop = snapshot.viewY;
+    }
+    if (taskN == null || !els.practiceView) return;
+    const card = els.practiceView.querySelector(`.task-card[data-n="${taskN}"]`);
+    if (card) {
+      card.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    const input = role
+      ? els.practiceView.querySelector(`input[data-role="${role}"][data-n="${taskN}"]`)
+      : null;
+    if (input && !input.readOnly) {
+      try {
+        input.focus({ preventScroll: true });
+      } catch (_error) {
+        input.focus();
+      }
+    }
+  };
+  apply();
+  requestAnimationFrame(() => {
+    apply();
+    requestAnimationFrame(apply);
+  });
+}
+
+async function openPractice(bankId, options = {}) {
   const student = currentStudent();
   if (!student || !bankId) return;
+  const keepScroll = Boolean(options.keepScroll);
+  const snapshot = keepScroll ? capturePracticeScroll() : null;
   hideRowConfirm();
   hideFindDialog();
   const asStudent = isStudentView() ? "&asStudent=1" : "";
@@ -1005,8 +1043,12 @@ async function openPractice(bankId) {
   updateModeChrome();
   updateShareBar();
   renderPractice();
-  window.scrollTo(0, 0);
-  els.practiceView.scrollTop = 0;
+  if (keepScroll) {
+    restorePracticeScroll(snapshot, options.focusN, options.focusRole);
+  } else {
+    window.scrollTo(0, 0);
+    els.practiceView.scrollTop = 0;
+  }
 }
 
 function renderPractice() {
@@ -1573,8 +1615,9 @@ els.practiceView.addEventListener("click", async (event) => {
   const student = currentStudent();
   const practice = state.practice;
   if (!student || !practice) return;
-  const n = Number(event.target.dataset.n);
-  if (event.target.closest(".save-answer")) {
+  const saveAnswer = event.target.closest(".save-answer");
+  if (saveAnswer) {
+    const n = Number(saveAnswer.dataset.n);
     if (!isTeacherUi()) {
       const task = (practice.tasks || []).find((item) => Number(item.n) === n);
       if (task && String(task.given || "").trim()) {
@@ -1593,15 +1636,17 @@ els.practiceView.addEventListener("click", async (event) => {
           answer: input ? input.value : "",
         }),
       });
-      await openPractice(practice.id);
+      await openPractice(practice.id, { keepScroll: true, focusN: n, focusRole: "given" });
       setSaveStatus(`Сохранено, ${data.stats.done}/${data.stats.total}`);
     } catch (error) {
       alert(error.message);
     }
     return;
   }
-  if (event.target.closest(".save-key")) {
+  const saveKey = event.target.closest(".save-key");
+  if (saveKey) {
     if (!isTeacherUi()) return;
+    const n = Number(saveKey.dataset.n);
     const input = els.practiceView.querySelector(`input[data-role='key'][data-n='${n}']`);
     try {
       await api("/api/bank-key", {
@@ -1612,7 +1657,7 @@ els.practiceView.addEventListener("click", async (event) => {
           answer: input ? input.value : "",
         }),
       });
-      await openPractice(practice.id);
+      await openPractice(practice.id, { keepScroll: true, focusN: n, focusRole: "key" });
       setSaveStatus("Ключ сохранён");
     } catch (error) {
       alert(error.message);
