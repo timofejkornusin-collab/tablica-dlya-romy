@@ -576,7 +576,7 @@ class RowCopyTest(unittest.TestCase):
         self.assertIn("applyCopiedRow", app_js)
         self.assertIn("journal-row-clipboard-v1", app_js)
         self.assertIn("date-row-tools", styles)
-        self.assertIn("const rowTools = isTeacherUi()", app_js)
+        self.assertIn("const rowTools = `<div class=\"date-row-tools\">", app_js)
 
 
 class TheoryFilesTest(unittest.TestCase):
