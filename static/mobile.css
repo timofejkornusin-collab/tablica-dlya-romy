@@ -181,6 +181,7 @@
     max-width: 100% !important;
     min-width: 0 !important;
     height: auto !important;
+    max-height: none !important;
     overflow: visible !important;
     box-sizing: border-box !important;
   }

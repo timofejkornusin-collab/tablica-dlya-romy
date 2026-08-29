@@ -94,8 +94,8 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=hide-share1", text)
-        self.assertIn("mobile.css?v=phone-cards1", text)
+        self.assertIn("styles.css?v=theory-grow1", text)
+        self.assertIn("mobile.css?v=theory-grow1", text)
         self.assertIn("app.js?v=hide-share1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)

@@ -472,10 +472,11 @@ th {
 td {
   padding: 0;
   background: #ffffff;
-  height: 1px;
+  height: auto;
   min-height: 96px;
-  vertical-align: stretch;
+  vertical-align: top;
   position: relative;
+  overflow: visible;
 }
 
 td.progress-cell {
@@ -500,12 +501,14 @@ td textarea {
 }
 
 tbody tr {
-  height: 112px;
+  height: auto;
+  min-height: 112px;
   transition: background-color 0.12s ease;
 }
 
 .teacher-table tbody tr {
-  height: 148px;
+  height: auto;
+  min-height: 148px;
 }
 
 .lesson-upcoming td {
@@ -555,8 +558,10 @@ tbody tr:hover td {
   box-shadow: inset 4px 0 0 var(--terracotta);
 }
 
-tbody tr.insert-gap {
+tbody tr.insert-gap,
+.teacher-table tbody tr.insert-gap {
   height: 28px;
+  min-height: 28px;
 }
 
 .col-row-tools {
@@ -789,40 +794,50 @@ textarea:focus {
 }
 
 .material-cell {
-  position: absolute;
-  inset: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 96px;
+  height: auto;
+  box-sizing: border-box;
 }
 
 .material-cell textarea.cell-fill {
-  position: absolute;
-  inset: 0;
+  position: static;
+  inset: auto;
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
   padding-right: 32px;
-  padding-bottom: 52px;
+  padding-bottom: 8px;
 }
 
 .material-tools {
-  position: absolute;
-  left: 8px;
-  right: 32px;
-  bottom: 6px;
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 4;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  flex-wrap: nowrap;
   gap: 6px;
-  align-items: center;
-  max-width: calc(100% - 40px);
-  max-height: 46%;
-  overflow: auto;
+  align-items: flex-start;
+  width: auto;
+  max-width: calc(100% - 16px);
+  max-height: none;
+  overflow: visible;
+  padding: 0 10px 10px;
+  pointer-events: auto;
 }
 
 .file-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   max-width: 100%;
-  padding: 2px 8px 2px 10px;
+  padding: 3px 6px 3px 10px;
   border-radius: 999px;
   background: var(--navy-soft);
 }
@@ -835,13 +850,28 @@ textarea:focus {
   word-break: normal;
 }
 
+.file-remove::after,
+.file-chip .file-remove::after {
+  content: none !important;
+  display: none !important;
+}
+
 .file-chip .file-remove {
   flex: 0 0 22px;
   width: 22px;
   height: 22px;
-  font-size: 1.15rem;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0 !important;
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 1.15rem !important;
   font-weight: 700;
   line-height: 1;
+  color: var(--muted);
 }
 
 .file-corner {
@@ -924,6 +954,16 @@ textarea:focus {
   font-size: 0.93rem;
 }
 
+.material-cell.student-material {
+  align-items: flex-start;
+  min-height: 96px;
+  overflow: visible;
+}
+
+.student-material .material-text {
+  align-self: stretch;
+}
+
 .material-text {
   white-space: normal;
   line-height: 1.45;
@@ -933,6 +973,14 @@ textarea:focus {
 .student-material .lesson-status-badge {
   margin: 0;
   align-self: flex-start;
+}
+
+.student-material .file-chip {
+  display: inline-flex;
+}
+
+.student-material .file-chip .file-remove {
+  display: none;
 }
 
 .student-material a {
@@ -1047,7 +1095,11 @@ textarea:focus {
   left: auto;
   right: auto;
   bottom: auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
   max-width: none;
+  padding: 0;
 }
 
 .bank-picker-layer {
@@ -2024,6 +2076,8 @@ textarea[readonly] {
     bottom: auto;
     max-width: none;
     width: 100%;
+    max-height: none;
+    overflow: visible;
   }
 
   .file-chip,
