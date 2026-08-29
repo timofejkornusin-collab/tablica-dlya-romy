@@ -1,0 +1,2640 @@
+const COLUMNS = [
+  { key: "date", label: "Дата урока", className: "col-date" },
+  { key: "topic", label: "Тема урока", className: "col-topic" },
+  { key: "theory", label: "Теоретический материал", className: "col-theory" },
+  { key: "practice", label: "Практические задания", className: "col-practice" },
+  { key: "progress", label: "Прогресс", className: "col-progress" },
+  { key: "homework", label: "Домашнее задание", className: "col-homework" },
+  { key: "comment", label: "Комментарий педагога", className: "col-comment" },
+];
+
+const WEEKDAYS = [
+  "понедельник",
+  "вторник",
+  "среда",
+  "четверг",
+  "пятница",
+  "суббота",
+  "воскресенье",
+];
+
+const TEMPLATE_LABELS = {
+  once: "1 раз в неделю",
+  twice: "2 раза в неделю",
+};
+
+const TABLE_CLIPBOARD_KEY = "journal-table-clipboard-v1";
+const ROW_CLIPBOARD_KEY = "journal-row-clipboard-v1";
+const ROW_COPY_ICON =
+  '<svg class="row-tool-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4A1.3 1.3 0 0 0 3.8 10.5h1.7" fill="none" stroke="currentColor" stroke-width="1.35"/></svg>';
+const ROW_PASTE_ICON =
+  '<svg class="row-tool-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.35"/><rect x="5.5" y="1.8" width="5" height="3.2" rx="1" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M6 8.2h4M6 10.6h4" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>';
+const ROW_COPY_KEYS = [
+  "topic",
+  "theory",
+  "homework",
+  "comment",
+  "bankId",
+  "importedSource",
+  "theoryFileId",
+  "theoryFileName",
+  "homeworkFileId",
+  "homeworkFileName",
+  "practiceFileId",
+  "practiceFileName",
+];
+
+function ensureTableCopyButtons() {
+  const actions = document.getElementById("table-actions");
+  if (!actions) return;
+  const settings = document.getElementById("settings-btn");
+  if (!document.getElementById("copy-table-btn")) {
+    const button = document.createElement("button");
+    button.id = "copy-table-btn";
+    button.className = "secondary-btn hidden";
+    button.type = "button";
+    button.textContent = "Копировать таблицу";
+    actions.insertBefore(button, settings || null);
+  }
+  if (!document.getElementById("paste-table-btn")) {
+    const button = document.createElement("button");
+    button.id = "paste-table-btn";
+    button.className = "secondary-btn hidden";
+    button.type = "button";
+    button.disabled = true;
+    button.textContent = "Вставить таблицу";
+    actions.insertBefore(button, settings || null);
+  }
+}
+
+ensureTableCopyButtons();
+
+function ensureEndDateField() {
+  const start = document.getElementById("start-date");
+  if (!document.getElementById("end-date") && start) {
+    const startLabel = start.closest("label");
+    const label = document.createElement("label");
+    label.id = "end-date-field";
+    label.appendChild(document.createTextNode("Дата последнего занятия"));
+    const input = document.createElement("input");
+    input.id = "end-date";
+    input.type = "date";
+    input.name = "endDate";
+    input.required = true;
+    label.appendChild(input);
+    if (startLabel && startLabel.parentNode) {
+      startLabel.parentNode.insertBefore(label, startLabel.nextSibling);
+    }
+  }
+  const fieldset = start && start.closest("fieldset");
+  const legend = fieldset && fieldset.querySelector("legend");
+  if (legend) {
+    legend.textContent = "День и время — даты встанут до последнего занятия";
+  }
+}
+
+ensureEndDateField();
+
+const state = {
+  students: [],
+  banks: [],
+  currentId: null,
+  me: null,
+  publicUrl: "",
+  lanUrl: "",
+  lanUrls: [],
+  wifiName: "",
+  tunnelError: "",
+  pdfImport: false,
+  view: "list",
+  practice: null,
+  previewAsStudent: false,
+  settingsStudentId: null,
+  pendingDeleteRow: null,
+  revealedRowIndex: null,
+  localTeacher: false,
+  pendingNewStudent: false,
+  tableClipboard: null,
+  rowClipboard: null,
+};
+
+const els = {
+  app: document.getElementById("app"),
+  listView: document.getElementById("list-view"),
+  tableView: document.getElementById("table-view"),
+  practiceView: document.getElementById("practice-view"),
+  pageTitle: document.getElementById("page-title"),
+  pageSubtitle: document.getElementById("page-subtitle"),
+  backBtn: document.getElementById("back-btn"),
+  addStudentBtn: document.getElementById("add-student-btn"),
+  previewBtn: document.getElementById("preview-btn"),
+  exitPreviewBtn: document.getElementById("exit-preview-btn"),
+  previewBanner: document.getElementById("preview-banner"),
+  rowConfirm: document.getElementById("row-confirm"),
+  rowConfirmYes: document.getElementById("row-confirm-yes"),
+  rowConfirmNo: document.getElementById("row-confirm-no"),
+  logoutConfirm: document.getElementById("logout-confirm"),
+  logoutConfirmYes: document.getElementById("logout-confirm-yes"),
+  logoutConfirmNo: document.getElementById("logout-confirm-no"),
+  tableActions: document.getElementById("table-actions"),
+  templateWrap: document.getElementById("template-wrap"),
+  templateSelect: document.getElementById("template-select"),
+  findWrap: document.getElementById("find-wrap"),
+  findRowBtn: document.getElementById("find-row-btn"),
+  copyTableBtn: document.getElementById("copy-table-btn"),
+  pasteTableBtn: document.getElementById("paste-table-btn"),
+  findDialog: document.getElementById("find-dialog"),
+  findForm: document.getElementById("find-form"),
+  findDate: document.getElementById("find-date"),
+  findError: document.getElementById("find-error"),
+  findCancel: document.getElementById("find-cancel"),
+  settingsBtn: document.getElementById("settings-btn"),
+  modalTitle: document.getElementById("modal-title"),
+  saveStatus: document.getElementById("save-status"),
+  shareBar: document.getElementById("share-bar"),
+  shareUrl: document.getElementById("share-url"),
+  shareHint: document.getElementById("share-hint"),
+  copyLinkBtn: document.getElementById("copy-link-btn"),
+  logoutBtn: document.getElementById("logout-btn"),
+  loginScreen: document.getElementById("login-screen"),
+  loginForm: document.getElementById("login-form"),
+  loginName: document.getElementById("login-name"),
+  loginPassword: document.getElementById("login-password"),
+  loginError: document.getElementById("login-error"),
+  modal: document.getElementById("modal"),
+  studentForm: document.getElementById("student-form"),
+  studentName: document.getElementById("student-name"),
+  startDate: document.getElementById("start-date"),
+  endDate: document.getElementById("end-date"),
+  weekday0: document.getElementById("weekday-0"),
+  weekday1: document.getElementById("weekday-1"),
+  time0: document.getElementById("time-0"),
+  time1: document.getElementById("time-1"),
+  secondSlot: document.getElementById("second-slot"),
+  cancelModal: document.getElementById("cancel-modal"),
+  createFields: document.getElementById("create-fields"),
+  createdBox: document.getElementById("created-box"),
+  createdLead: document.getElementById("created-lead"),
+  createdCreds: document.getElementById("created-creds"),
+  copyCredsBtn: document.getElementById("copy-creds-btn"),
+  accessFields: document.getElementById("access-fields"),
+  settingsLogin: document.getElementById("settings-login"),
+  resetPasswordBtn: document.getElementById("reset-password-btn"),
+  createSubmit: document.getElementById("create-submit"),
+  modalError: document.getElementById("modal-error"),
+};
+
+let saveTimer = null;
+let pollTimer = null;
+let saveChain = Promise.resolve();
+let skipTableDomSync = false;
+const saveEpochByStudent = Object.create(null);
+
+function bumpSaveEpoch(studentId) {
+  const id = String(studentId || "");
+  if (!id) return 0;
+  saveEpochByStudent[id] = (saveEpochByStudent[id] || 0) + 1;
+  return saveEpochByStudent[id];
+}
+
+function cloneTableData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function tableContentScore(student) {
+  return (student && Array.isArray(student.rows) ? student.rows : []).reduce((sum, row) => {
+    if (!row || typeof row !== "object") return sum;
+    return (
+      sum +
+      ["date", "topic", "theory", "homework", "comment"].reduce(
+        (part, key) => part + String(row[key] || "").trim().length,
+        0
+      )
+    );
+  }, 0);
+}
+
+function syncTableRowsFromDom(student) {
+  if (!student || !els.tableView || els.tableView.classList.contains("hidden")) return;
+  if (state.view !== "table" || state.currentId !== student.id) return;
+  const wrap = els.tableView.querySelector(".table-wrap");
+  if (!wrap || wrap.getAttribute("data-student-id") !== String(student.id)) return;
+  if (!Array.isArray(student.rows)) student.rows = [];
+  els.tableView.querySelectorAll("textarea[data-row][data-key]").forEach((area) => {
+    const index = Number(area.dataset.row);
+    if (!Number.isInteger(index) || index < 0) return;
+    while (student.rows.length <= index) student.rows.push(emptyRow());
+    const row = student.rows[index];
+    if (!row) return;
+    row[area.dataset.key] = area.value;
+  });
+  els.tableView.querySelectorAll("select[data-role='bank']").forEach((select) => {
+    const index = Number(select.dataset.row);
+    const row = student.rows[index];
+    if (!row) return;
+    row.bankId = select.value;
+  });
+}
+
+function applyCopiedTable(target, copied) {
+  const rows = Array.isArray(copied.rowData) ? copied.rowData : [];
+  target.rows = cloneTableData(rows);
+  target.template = copied.template === "twice" ? "twice" : "once";
+  if (copied.schedule) {
+    target.schedule = cloneTableData(copied.schedule);
+  }
+}
+
+function copyableRowSnapshot(row) {
+  const source = row && typeof row === "object" ? row : emptyRow();
+  const copy = emptyRow();
+  ROW_COPY_KEYS.forEach((key) => {
+    copy[key] = String(source[key] || "");
+  });
+  copy.lessonStatus = source.lessonStatus === "held" || source.lessonStatus === "missed" ? source.lessonStatus : "";
+  copy.theoryFiles = rowTheoryFiles(source).map((item) => ({ id: item.id, name: item.name }));
+  return copy;
+}
+
+function applyCopiedRow(target, source) {
+  const keptDate = String((target && target.date) || "");
+  const keptExtra = Boolean(target && target.extraLesson);
+  const next = copyableRowSnapshot(source);
+  next.date = keptDate;
+  next.extraLesson = keptExtra;
+  if (!target || typeof target !== "object") return next;
+  Object.keys(target).forEach((key) => {
+    delete target[key];
+  });
+  Object.assign(target, next);
+  return target;
+}
+
+function emptyRow() {
+  return {
+    date: "",
+    lessonStatus: "",
+    topic: "",
+    theory: "",
+    practice: "",
+    progress: "",
+    homework: "",
+    comment: "",
+    bankId: "",
+    theoryFileId: "",
+    theoryFileName: "",
+    homeworkFileId: "",
+    homeworkFileName: "",
+    practiceFileId: "",
+    practiceFileName: "",
+    importedSource: "",
+    extraLesson: false,
+    theoryFiles: [],
+  };
+}
+
+function rowTheoryFiles(row) {
+  const list = Array.isArray(row && row.theoryFiles) ? row.theoryFiles : [];
+  const fromList = list
+    .map((item) => ({
+      id: String((item && (item.id || item.fileId)) || ""),
+      name: String((item && item.name) || ""),
+    }))
+    .filter((item) => item.id)
+    .map((item) => ({ id: item.id, name: item.name || item.id }));
+  if (fromList.length) return fromList;
+  const id = String((row && row.theoryFileId) || "");
+  if (!id) return [];
+  return [{ id, name: String((row && row.theoryFileName) || id) }];
+}
+
+function isTeacherAccount() {
+  return !state.me || state.me.role !== "student";
+}
+
+function isStudentView() {
+  return !isTeacherAccount() || state.previewAsStudent;
+}
+
+function isTeacherUi() {
+  return isTeacherAccount() && !state.previewAsStudent;
+}
+
+function hideFindDialog() {
+  if (els.findDialog) els.findDialog.classList.add("hidden");
+  if (els.findError) els.findError.textContent = "";
+}
+
+function showFindDialog() {
+  hideRowConfirm();
+  hideLogoutConfirm();
+  if (!els.findDialog) return;
+  if (els.findError) els.findError.textContent = "";
+  els.findDialog.classList.remove("hidden");
+  if (els.findDate) {
+    els.findDate.value = "";
+    els.findDate.focus();
+  }
+}
+
+function parseDateParts(value) {
+  const raw = String(value || "").trim();
+  const iso = raw.match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+  if (iso) {
+    return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) };
+  }
+  const dmy = raw.match(/(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?/);
+  if (!dmy) return null;
+  let year = dmy[3] ? Number(dmy[3]) : null;
+  if (year != null && year < 100) year += 2000;
+  return { year, month: Number(dmy[2]), day: Number(dmy[1]) };
+}
+
+function rowMatchesDate(row, query) {
+  const needle = String(query || "").trim();
+  if (!needle) return false;
+  const rowDate = String((row && row.date) || "");
+  const wanted = parseDateParts(needle);
+  const got = parseDateParts(rowDate);
+  if (wanted && got) {
+    if (wanted.day !== got.day || wanted.month !== got.month) return false;
+    if (wanted.year != null && got.year != null && wanted.year !== got.year) return false;
+    return true;
+  }
+  const compact = (text) => text.replace(/\s+/g, "").toLowerCase();
+  return compact(rowDate).includes(compact(needle));
+}
+
+function scrollToLessonRow(index) {
+  const row = els.tableView.querySelector(`tr[data-row="${index}"]`);
+  if (!row) return false;
+  document.querySelectorAll("tr.row-found").forEach((item) => item.classList.remove("row-found"));
+  row.classList.add("row-found");
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => row.classList.remove("row-found"), 2600);
+  return true;
+}
+
+function findLessonByDate(query) {
+  const student = currentStudent();
+  const rows = student && Array.isArray(student.rows) ? student.rows : [];
+  if (!student || !rows.length) {
+    return { ok: false, error: "Сначала откройте таблицу ученика." };
+  }
+  const index = rows.findIndex((row) => rowMatchesDate(row, query));
+  if (index < 0) {
+    return { ok: false, error: "Строка с такой датой не найдена." };
+  }
+  state.revealedRowIndex = index;
+  renderTable();
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (!scrollToLessonRow(index) && els.findError) {
+        els.findError.textContent = "Строка есть, но не получилось к ней перейти.";
+      }
+    });
+  });
+  setSaveStatus(`Открыта строка с датой ${rows[index].date || query}`);
+  return { ok: true, index };
+}
+
+function hideLogoutConfirm() {
+  if (els.logoutConfirm) els.logoutConfirm.classList.add("hidden");
+}
+
+function showLogoutConfirm() {
+  hideRowConfirm();
+  hideFindDialog();
+  if (!els.logoutConfirm) return;
+  els.logoutConfirm.classList.remove("hidden");
+  if (els.logoutConfirmNo) els.logoutConfirmNo.focus();
+}
+
+async function performLogout() {
+  hideLogoutConfirm();
+  try {
+    await api("/api/logout", { method: "POST", body: "{}" });
+  } catch (_error) {
+    /* всё равно выходим на экран входа */
+  }
+  state.me = null;
+  state.students = [];
+  state.currentId = null;
+  state.localTeacher = false;
+  state.previewAsStudent = false;
+  showLoginScreen();
+}
+
+function hideRowConfirm() {
+  state.pendingDeleteRow = null;
+  if (els.rowConfirm) els.rowConfirm.classList.add("hidden");
+}
+
+function showRowConfirm(rowIndex) {
+  if (!els.rowConfirm) return;
+  state.pendingDeleteRow = rowIndex;
+  els.rowConfirm.classList.remove("hidden");
+  if (els.rowConfirmNo) els.rowConfirmNo.focus();
+}
+
+function extraLessonRow() {
+  const row = emptyRow();
+  row.extraLesson = true;
+  return row;
+}
+
+function insertLessonAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  hideRowConfirm();
+  if (!Array.isArray(student.rows)) student.rows = [];
+  const at = Math.max(0, Math.min(Number(index) || 0, student.rows.length));
+  bumpSaveEpoch(student.id);
+  skipTableDomSync = true;
+  student.rows.splice(at, 0, extraLessonRow());
+  scheduleSave();
+  renderTable();
+  const dateArea = els.tableView.querySelector(`textarea[data-row='${at}'][data-key='date']`);
+  if (dateArea) dateArea.focus();
+}
+
+async function deleteLessonAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  const row = student.rows[index];
+  if (!row) return;
+  hideRowConfirm();
+  for (const field of ["theory", "homework", "practice"]) {
+    if (!row[`${field}FileId`]) continue;
+    try {
+      const data = await api("/api/file/delete", {
+        method: "POST",
+        body: JSON.stringify({ studentId: student.id, row: index, field }),
+      });
+      replaceStudent(data.student);
+    } catch (_error) {
+      /* строку всё равно убираем */
+    }
+  }
+  const fresh = currentStudent();
+  if (!fresh) return;
+  bumpSaveEpoch(fresh.id);
+  skipTableDomSync = true;
+  fresh.rows.splice(index, 1);
+  if (!fresh.rows.length) fresh.rows.push(emptyRow());
+  setSaveStatus("Строка удалена");
+  await persistCurrent();
+  skipTableDomSync = true;
+  renderTable();
+}
+
+function enterStudentPreview(studentId) {
+  if (!isTeacherAccount() || !studentId) return;
+  hideRowConfirm();
+  state.previewAsStudent = true;
+  state.currentId = studentId;
+  renderTable();
+}
+
+function exitStudentPreview() {
+  state.previewAsStudent = false;
+  if (state.currentId) {
+    renderTable();
+    return;
+  }
+  renderList();
+}
+
+function updateModeChrome() {
+  const preview = isTeacherAccount() && state.previewAsStudent;
+  const inStudentTable = Boolean(state.currentId) && (state.view === "table" || state.view === "practice");
+  if (els.previewBanner) {
+    els.previewBanner.classList.toggle("hidden", !preview);
+  }
+  if (els.exitPreviewBtn) {
+    els.exitPreviewBtn.classList.toggle("hidden", !preview);
+  }
+  if (els.previewBtn) {
+    els.previewBtn.classList.toggle("hidden", !isTeacherUi() || !inStudentTable);
+  }
+  updateTableCopyButtons();
+  document.body.classList.toggle("student-preview", isStudentView());
+}
+
+function currentStudent() {
+  return state.students.find((student) => student.id === state.currentId) || null;
+}
+
+function setSaveStatus(text) {
+  if (!els.saveStatus) return;
+  const value = String(text || "").trim();
+  if (!value || value === "Сохранено" || value === "Сохранение…") {
+    els.saveStatus.textContent = "";
+    return;
+  }
+  els.saveStatus.textContent = value;
+}
+
+function setPageSubtitle(text) {
+  if (!els.pageSubtitle) return;
+  const value = String(text || "").trim();
+  els.pageSubtitle.textContent = value;
+  els.pageSubtitle.classList.toggle("hidden", !value);
+}
+
+function hideUnwantedLabels() {
+  document.querySelectorAll(".card-login").forEach((node) => node.remove());
+  if (els.shareBar) els.shareBar.classList.add("hidden");
+  if (!els.pageSubtitle) return;
+  const text = String(els.pageSubtitle.textContent || "");
+  if (/Подготовка к экзаменам|10\s*[–-]\s*11\s*класс/i.test(text)) {
+    setPageSubtitle("");
+  }
+}
+
+function weekdaySelect(id, selected) {
+  const options = WEEKDAYS.map(
+    (name, index) =>
+      `<option value="${index}" ${Number(selected) === index ? "selected" : ""}>${name}</option>`
+  ).join("");
+  return `<select id="${id}">${options}</select>`;
+}
+
+async function api(path, options = {}) {
+  let response;
+  try {
+    response = await fetch(path, {
+      cache: "no-store",
+      credentials: "same-origin",
+      ...options,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    throw friendlyNetworkError(error);
+  }
+  let data = {};
+  try {
+    data = await response.json();
+  } catch (_error) {
+    data = {};
+  }
+  if (!response.ok) {
+    const error = new Error(data.error || "Ошибка запроса");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+function friendlyNetworkError(error) {
+  const message = String((error && error.message) || error || "");
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
+    return new Error(
+      "Журнал не отвечает. Закройте все чёрные окна запуска, откройте «запустить.bat» и обновите страницу."
+    );
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
+async function loadSession() {
+  const data = await api("/api/session");
+  state.me = data.user;
+  state.localTeacher = Boolean(data.localTeacher);
+  state.publicUrl = data.publicUrl || "";
+  state.lanUrl = data.lanUrl || "";
+  state.lanUrls = Array.isArray(data.lanUrls) && data.lanUrls.length ? data.lanUrls : data.lanUrl ? [data.lanUrl] : [];
+  state.wifiName = data.wifiName || "";
+  state.tunnelError = data.tunnelError || "";
+  state.pdfImport = Boolean(data.pdfImport);
+  updateShareBar();
+  return data;
+}
+
+async function loadStudents() {
+  const data = await api("/api/students");
+  state.students = Array.isArray(data.students) ? data.students : [];
+}
+
+async function loadBanks() {
+  const data = await api("/api/banks");
+  state.banks = Array.isArray(data.banks) ? data.banks : [];
+}
+
+function updateShareBar() {
+  if (els.shareBar) els.shareBar.classList.add("hidden");
+}
+
+function showApp() {
+  if (els.loginScreen) els.loginScreen.classList.add("hidden");
+  els.app.classList.remove("hidden");
+  els.addStudentBtn.classList.toggle("hidden", !isTeacherUi());
+  if (els.logoutBtn) els.logoutBtn.classList.remove("hidden");
+  updateModeChrome();
+  updateShareBar();
+}
+
+function showLoginScreen() {
+  hideLogoutConfirm();
+  hideRowConfirm();
+  hideFindDialog();
+  if (els.app) els.app.classList.add("hidden");
+  if (els.loginScreen) els.loginScreen.classList.remove("hidden");
+  if (els.loginError) els.loginError.textContent = "";
+  if (els.loginPassword) els.loginPassword.value = "";
+  if (els.loginName) els.loginName.focus();
+}
+
+function accessMessage(name, login, password) {
+  const lines = [`Журнал русского языка — кабинет ученика${name ? ` (${name})` : ""}`];
+  if (state.publicUrl) {
+    lines.push(`Ссылка: ${state.publicUrl}`);
+  }
+  lines.push(`Логин: ${login}`, `Пароль: ${password}`, "");
+  lines.push(
+    state.publicUrl
+      ? "Откройте ссылку, введите логин и пароль — откроется только ваша таблица."
+      : "Введите логин и пароль на странице входа — откроется только ваша таблица."
+  );
+  return lines.join("\n");
+}
+
+function showCreatedAccess(name, login, password, lead) {
+  const text = accessMessage(name, login, password);
+  if (els.createdLead) els.createdLead.textContent = lead;
+  if (els.createdCreds) els.createdCreds.textContent = text;
+  els.createdBox.classList.remove("hidden");
+}
+
+function parseIsoDateValue(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+function formatIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addCalendarYears(value, years) {
+  const date = parseIsoDateValue(value);
+  if (!date) return "";
+  const month = date.getMonth();
+  date.setFullYear(date.getFullYear() + years);
+  if (date.getMonth() !== month) {
+    date.setDate(0);
+  }
+  return formatIsoDate(date);
+}
+
+function schoolYearMay(date) {
+  return date.getMonth() + 1 >= 6 ? date.getFullYear() + 1 : date.getFullYear();
+}
+
+function lastWeekdayInMay(year, weekday) {
+  const date = new Date(year, 4, 31, 12, 0, 0);
+  while ((date.getDay() + 6) % 7 !== weekday) {
+    date.setDate(date.getDate() - 1);
+  }
+  return date;
+}
+
+function defaultEndDateForStart(startValue, slots) {
+  const start = parseIsoDateValue(startValue);
+  if (!start) return "";
+  const year = schoolYearMay(start);
+  const weekdays = [];
+  if (Array.isArray(slots)) {
+    slots.forEach((item) => {
+      const weekday = Number(item && item.weekday);
+      if (Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 && !weekdays.includes(weekday)) {
+        weekdays.push(weekday);
+      }
+    });
+  }
+  if (!weekdays.length) {
+    weekdays.push((start.getDay() + 6) % 7);
+  }
+  let end = null;
+  weekdays.forEach((weekday) => {
+    const candidate = lastWeekdayInMay(year, weekday);
+    if (!end || candidate > end) end = candidate;
+  });
+  return end ? formatIsoDate(end) : "";
+}
+
+function dmyToIso(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return "";
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+function lastRowIsoDate(student) {
+  let last = "";
+  const rows = student && Array.isArray(student.rows) ? student.rows : [];
+  rows.forEach((row) => {
+    const iso = dmyToIso(String((row && row.date) || "").split(",")[0]);
+    if (iso && iso > last) last = iso;
+  });
+  return last;
+}
+
+function formSlotsForEndDate() {
+  const slots = [{ weekday: Number(els.weekday0 ? els.weekday0.value : 3) }];
+  if (els.studentForm && els.studentForm.template && els.studentForm.template.value === "twice") {
+    slots.push({ weekday: Number(els.weekday1 ? els.weekday1.value : 1) });
+  }
+  return slots;
+}
+
+function syncEndDateLimits() {
+  if (!els.endDate || !els.startDate || !els.startDate.value) return;
+  els.endDate.min = els.startDate.value;
+  const max = addCalendarYears(els.startDate.value, 4);
+  if (max) els.endDate.max = max;
+}
+
+function toDateInputValue(value) {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return dmyToIso(raw);
+}
+
+function fillEndDateValue(student) {
+  if (!els.endDate || !els.startDate) return;
+  syncEndDateLimits();
+  const startValue = els.startDate.value;
+  const schedule = (student && student.schedule) || {};
+  const stored = toDateInputValue(schedule.endDate);
+  if (stored && (!startValue || stored >= startValue)) {
+    els.endDate.value = stored;
+    return;
+  }
+  const computed = defaultEndDateForStart(startValue, formSlotsForEndDate());
+  const lastLesson = lastRowIsoDate(student);
+  els.endDate.value = lastLesson && lastLesson > computed ? lastLesson : computed;
+}
+
+function collectCreateSlots() {
+  syncStartDateWeekday();
+  const template = els.studentForm.template.value === "twice" ? "twice" : "once";
+  const slots = [
+    { weekday: Number(els.weekday0.value), time: els.time0.value || "16:00" },
+  ];
+  if (template === "twice") {
+    slots.push({ weekday: Number(els.weekday1.value), time: els.time1.value || "16:00" });
+  }
+  return {
+    template,
+    slots,
+    startDate: els.startDate ? els.startDate.value : "",
+    endDate: els.endDate ? els.endDate.value : "",
+  };
+}
+
+function syncStartDateWeekday() {
+  if (!els.startDate || !els.startDate.value || !els.weekday0) return;
+  const date = new Date(`${els.startDate.value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return;
+  els.weekday0.value = String((date.getDay() + 6) % 7);
+}
+
+async function persistCurrent() {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return saveChain;
+  if (!skipTableDomSync) syncTableRowsFromDom(student);
+  const id = student.id;
+  const epoch = saveEpochByStudent[id] || 0;
+  const payload = {
+    id,
+    rows: cloneTableData(Array.isArray(student.rows) ? student.rows : []),
+    template: student.template === "twice" ? "twice" : "once",
+  };
+  const run = async () => {
+    if ((saveEpochByStudent[id] || 0) !== epoch) return;
+    setSaveStatus("Сохранение…");
+    await api("/api/table", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if ((saveEpochByStudent[id] || 0) !== epoch) return;
+    setSaveStatus("Сохранено");
+  };
+  saveChain = saveChain.then(run, run);
+  return saveChain;
+}
+
+function loadTableClipboard() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(TABLE_CLIPBOARD_KEY) || "null");
+    if (stored && stored.sourceId && stored.sourceName) {
+      state.tableClipboard = stored;
+    }
+  } catch (_error) {
+    state.tableClipboard = null;
+  }
+}
+
+function loadRowClipboard() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(ROW_CLIPBOARD_KEY) || "null");
+    if (stored && stored.row && typeof stored.row === "object") {
+      state.rowClipboard = stored;
+    }
+  } catch (_error) {
+    state.rowClipboard = null;
+  }
+}
+
+function updateRowPasteButtons() {
+  const ready = Boolean(state.rowClipboard && state.rowClipboard.row);
+  document.querySelectorAll(".row-paste-btn").forEach((button) => {
+    button.classList.toggle("is-disabled", !ready);
+    button.title = ready ? "Вставить скопированную строку" : "Сначала скопируйте строку";
+  });
+}
+
+function copyRowAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  syncTableRowsFromDom(student);
+  const row = student.rows[index];
+  if (!row) return;
+  state.rowClipboard = {
+    v: 1,
+    copiedAt: new Date().toISOString(),
+    sourceStudentId: student.id,
+    sourceName: student.name,
+    sourceRowIndex: index,
+    row: copyableRowSnapshot(row),
+  };
+  try {
+    sessionStorage.setItem(ROW_CLIPBOARD_KEY, JSON.stringify(state.rowClipboard));
+  } catch (_error) {
+    /* Буфер всё равно действует, пока открыта эта страница. */
+  }
+  updateRowPasteButtons();
+  setSaveStatus("Строка скопирована");
+}
+
+async function pasteRowAt(index) {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  const copied = state.rowClipboard && state.rowClipboard.row;
+  if (!copied) {
+    setSaveStatus("Сначала скопируйте строку");
+    return;
+  }
+  if (state.rowClipboard.sourceStudentId === student.id && Number(state.rowClipboard.sourceRowIndex) === Number(index)) {
+    setSaveStatus("Это та же строка — вставьте в другую");
+    return;
+  }
+  clearTimeout(saveTimer);
+  await saveChain.catch(() => {});
+  syncTableRowsFromDom(student);
+  while (student.rows.length <= index) student.rows.push(emptyRow());
+  const target = student.rows[index];
+  if (!target) return;
+  bumpSaveEpoch(student.id);
+  applyCopiedRow(target, copied);
+  skipTableDomSync = true;
+  renderTable();
+  await persistCurrent();
+  try {
+    const stayOn = student.id;
+    await loadStudents();
+    state.currentId = stayOn;
+  } catch (_error) {
+    /* локальная вставка уже на экране */
+  }
+  skipTableDomSync = true;
+  renderTable();
+  setSaveStatus("Строка вставлена — можно сразу править");
+}
+
+function updateTableCopyButtons() {
+  const teacherTable = isTeacherUi() && state.view === "table" && Boolean(currentStudent());
+  if (els.copyTableBtn) {
+    els.copyTableBtn.classList.toggle("hidden", !teacherTable);
+  }
+  if (els.pasteTableBtn) {
+    els.pasteTableBtn.classList.toggle("hidden", !teacherTable);
+    const sameStudent =
+      state.tableClipboard && currentStudent() && state.tableClipboard.sourceId === currentStudent().id;
+    els.pasteTableBtn.disabled = !state.tableClipboard || Boolean(sameStudent);
+    els.pasteTableBtn.title = state.tableClipboard
+      ? sameStudent
+        ? "Откройте таблицу другого ученика"
+        : `Вставить таблицу ученика «${state.tableClipboard.sourceName}»`
+      : "Сначала скопируйте таблицу ученика";
+  }
+}
+
+async function copyCurrentTable() {
+  const student = currentStudent();
+  if (!student || !isTeacherUi()) return;
+  clearTimeout(saveTimer);
+  syncTableRowsFromDom(student);
+  await persistCurrent();
+  state.tableClipboard = {
+    sourceId: student.id,
+    sourceName: student.name,
+    rows: Array.isArray(student.rows) ? student.rows.length : 0,
+    rowData: cloneTableData(Array.isArray(student.rows) ? student.rows : []),
+    template: student.template === "twice" ? "twice" : "once",
+    schedule: student.schedule ? cloneTableData(student.schedule) : null,
+  };
+  try {
+    sessionStorage.setItem(TABLE_CLIPBOARD_KEY, JSON.stringify(state.tableClipboard));
+  } catch (_error) {
+    /* Буфер всё равно действует, пока открыта эта страница. */
+  }
+  updateTableCopyButtons();
+  setSaveStatus(`Таблица «${student.name}» скопирована: ${state.tableClipboard.rows} строк`);
+}
+
+async function pasteCopiedTable() {
+  const target = currentStudent();
+  const copied = state.tableClipboard;
+  if (!target || !copied || !isTeacherUi() || target.id === copied.sourceId) return;
+  if (!Array.isArray(copied.rowData) || !copied.rowData.length) {
+    const source = state.students.find((item) => item.id === copied.sourceId);
+    if (source && Array.isArray(source.rows)) {
+      copied.rowData = cloneTableData(source.rows);
+      copied.template = source.template === "twice" ? "twice" : copied.template;
+      copied.schedule = source.schedule ? cloneTableData(source.schedule) : copied.schedule;
+    }
+  }
+  if (!Array.isArray(copied.rowData)) {
+    throw new Error("Сначала скопируйте таблицу ещё раз — буфер оказался пустым.");
+  }
+  const approved = confirm(
+    `Заменить таблицу ученика «${target.name}» таблицей ученика «${copied.sourceName}»?\n\n` +
+      "Даты, темы, материалы, задания и отметки занятий будут скопированы полностью. " +
+      "Личные ответы и прогресс учеников не копируются."
+  );
+  if (!approved) return;
+  clearTimeout(saveTimer);
+  await saveChain.catch(() => {});
+  bumpSaveEpoch(target.id);
+  applyCopiedTable(target, copied);
+  skipTableDomSync = true;
+  renderTable();
+  setSaveStatus("Вставляю таблицу…");
+  let data = { student: target };
+  try {
+    data = await api("/api/table/copy", {
+      method: "POST",
+      body: JSON.stringify({ sourceId: copied.sourceId, targetId: target.id }),
+    });
+  } catch (error) {
+    if (error.status !== 404 && error.status !== 405) throw error;
+    const schedule = copied.schedule;
+    if (schedule && schedule.startDate && Array.isArray(schedule.slots) && schedule.slots.length) {
+      try {
+        await api("/api/schedule", {
+          method: "POST",
+          body: JSON.stringify({
+            id: target.id,
+            name: target.name,
+            template: copied.template,
+            startDate: schedule.startDate,
+            endDate: schedule.endDate || "",
+            slots: schedule.slots,
+            regenerate: false,
+          }),
+        });
+      } catch (_scheduleError) {
+        /* строки всё равно сохраняем через /api/table */
+      }
+    }
+    data = await api("/api/table", {
+      method: "POST",
+      body: JSON.stringify({
+        id: target.id,
+        rows: cloneTableData(target.rows),
+        template: target.template,
+      }),
+    });
+  }
+    if (data && data.student) {
+      replaceStudent(data.student, { keepRicher: true });
+    }
+  await persistCurrent();
+  skipTableDomSync = true;
+  renderTable();
+  setSaveStatus(`Таблица «${copied.sourceName}» вставлена ученику «${target.name}»`);
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    persistCurrent()
+      .then(() => importLinkedPdfs(currentStudent()))
+      .then((changed) => {
+        if (changed && state.view === "table") renderTable();
+      })
+      .catch((error) => setSaveStatus(friendlyNetworkError(error).message));
+  }, 1200);
+}
+
+function toggleSecondSlot() {
+  const twice = els.studentForm.template.value === "twice";
+  els.secondSlot.classList.toggle("hidden", !twice);
+}
+
+function fillStudentForm(student) {
+  const schedule = (student && student.schedule) || {};
+  const slots = Array.isArray(schedule.slots) ? schedule.slots : [];
+  els.studentName.value = student ? student.name : "";
+  els.studentForm.template.value = student && student.template === "twice" ? "twice" : "once";
+  els.startDate.value = schedule.startDate || "2026-09-03";
+  els.weekday0.value = String(slots[0] ? slots[0].weekday : 3);
+  els.time0.value = (slots[0] && slots[0].time) || "16:00";
+  els.weekday1.value = String(slots[1] ? slots[1].weekday : 1);
+  els.time1.value = (slots[1] && slots[1].time) || "16:00";
+  toggleSecondSlot();
+  fillEndDateValue(student);
+}
+
+function openModal() {
+  state.settingsStudentId = null;
+  state.pendingNewStudent = false;
+  if (els.modalTitle) els.modalTitle.textContent = "Новый ученик";
+  els.modal.classList.remove("hidden");
+  els.createFields.classList.remove("hidden");
+  if (els.accessFields) els.accessFields.classList.add("hidden");
+  els.createdBox.classList.add("hidden");
+  els.createSubmit.classList.remove("hidden");
+  els.createSubmit.textContent = "Создать таблицу";
+  els.cancelModal.textContent = "Отмена";
+  els.modalError.textContent = "";
+  els.studentForm.reset();
+  fillStudentForm(null);
+  els.studentName.focus();
+}
+
+function openSettings(studentId) {
+  const student = state.students.find((item) => item.id === studentId) || currentStudent();
+  if (!student || !isTeacherUi()) return;
+  state.settingsStudentId = student.id;
+  state.pendingNewStudent = false;
+  if (els.modalTitle) els.modalTitle.textContent = "Настройки ученика";
+  els.modal.classList.remove("hidden");
+  els.createFields.classList.remove("hidden");
+  if (els.accessFields) els.accessFields.classList.remove("hidden");
+  if (els.settingsLogin) els.settingsLogin.textContent = student.login || "ещё не задан";
+  els.createdBox.classList.add("hidden");
+  els.createSubmit.classList.remove("hidden");
+  els.createSubmit.textContent = "Сохранить";
+  els.cancelModal.textContent = "Отмена";
+  els.modalError.textContent = "";
+  fillStudentForm(student);
+  els.studentName.focus();
+}
+
+function closeModal(goToTable) {
+  const pending = state.pendingNewStudent;
+  const id = state.currentId;
+  els.modal.classList.add("hidden");
+  state.settingsStudentId = null;
+  state.pendingNewStudent = false;
+  els.cancelModal.textContent = "Отмена";
+  if (!pending || !id) return;
+  if (goToTable) {
+    renderTable();
+    return;
+  }
+  renderList();
+}
+
+function renderList() {
+  hideRowConfirm();
+  hideFindDialog();
+  document.body.classList.remove("practice-open");
+  state.view = "list";
+  state.currentId = null;
+  state.previewAsStudent = false;
+  state.revealedRowIndex = null;
+  els.listView.classList.remove("hidden");
+  els.tableView.classList.add("hidden");
+  els.practiceView.classList.add("hidden");
+  els.backBtn.classList.add("hidden");
+  els.tableActions.classList.add("hidden");
+  if (els.settingsBtn) els.settingsBtn.classList.add("hidden");
+  if (isTeacherUi()) els.addStudentBtn.classList.remove("hidden");
+  els.pageTitle.textContent = "Журнал занятий";
+  setPageSubtitle("");
+  hideUnwantedLabels();
+  updateModeChrome();
+  updateShareBar();
+
+  if (!state.students.length) {
+    els.listView.innerHTML = `
+      <div class="empty-state">
+        <p>Пока нет учеников.</p>
+        <p>Добавьте ученика, укажите день, время и дату последнего занятия.</p>
+      </div>
+    `;
+    return;
+  }
+
+  els.listView.innerHTML = `
+    <div class="cards">${state.students
+      .map(
+        (student) => `
+        <article class="card" data-id="${student.id}">
+          <div class="card-top">
+            <div class="avatar">${escapeHtml(initial(student.name))}</div>
+            <div>
+              <h2>${escapeHtml(student.name)}</h2>
+              <span class="badge">${TEMPLATE_LABELS[student.template] || TEMPLATE_LABELS.once}</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="primary-btn open-table" type="button">Открыть таблицу</button>
+            <button class="secondary-btn preview-student" type="button">Как видит ученик</button>
+            <button class="secondary-btn open-settings" type="button">Настройки</button>
+            <button class="danger-btn delete-student" type="button">Удалить</button>
+          </div>
+        </article>
+      `
+      )
+      .join("")}</div>`;
+}
+
+function bankLabel(bank, fallback) {
+  if (!bank) return fallback || "Задания из PDF";
+  const extra = bank.total ? ` · ${bank.total}` : "";
+  return bank.id === "ege-10" ? bank.title : `${bank.title || bank.id}${extra}`;
+}
+
+function bankItems(selected) {
+  const items = state.banks.length ? state.banks.slice() : [{ id: "ege-10", title: "Задание 10 ЕГЭ" }];
+  if (selected && !items.some((bank) => bank.id === selected)) {
+    const student = currentStudent();
+    const row = student && (student.rows || []).find((item) => item.bankId === selected);
+    items.push({ id: selected, title: (row && row.bankTitle) || "Задания из PDF" });
+  }
+  return items;
+}
+
+function bankPickerHtml(rowIndex, selected) {
+  const items = bankItems(selected);
+  const current = items.find((bank) => bank.id === selected);
+  const currentLabel = selected ? bankLabel(current) : "— нет —";
+  const none = `<button class="bank-picker-choice" type="button" data-row="${rowIndex}" data-bank="">
+      <span class="bank-picker-name">— нет —</span>
+    </button>`;
+  const rows = items
+    .map((bank) => {
+      const canDelete = String(bank.id || "").startsWith("pdf-");
+      const deleteBtn = canDelete
+        ? `<button class="bank-delete" type="button" data-bank="${escapeHtml(bank.id)}" title="Удалить из базы практических заданий" aria-label="Удалить ${escapeHtml(
+            bankLabel(bank)
+          )}">×</button>`
+        : "";
+      return `<div class="bank-picker-row${bank.id === selected ? " is-selected" : ""}">
+        <button class="bank-picker-choice" type="button" data-row="${rowIndex}" data-bank="${escapeHtml(bank.id)}">
+          <span class="bank-picker-name">${escapeHtml(bankLabel(bank))}</span>
+        </button>
+        ${deleteBtn}
+      </div>`;
+    })
+    .join("");
+  return `<div class="bank-picker" data-row="${rowIndex}">
+    <button class="bank-picker-toggle" type="button" data-row="${rowIndex}" aria-expanded="false" aria-haspopup="listbox">
+      <span class="bank-picker-name">${escapeHtml(currentLabel)}</span>
+      <span class="bank-picker-caret" aria-hidden="true">▾</span>
+    </button>
+    <div class="bank-picker-menu" data-row="${rowIndex}" role="listbox"><div class="bank-picker-list">${none}${rows}</div></div>
+  </div>`;
+}
+
+function isBankMenuOpen(menu) {
+  return Boolean(menu && (menu.closest(".bank-picker-layer") || menu.classList.contains("is-open")));
+}
+
+function closeBankPickers() {
+  document.querySelectorAll(".bank-picker-menu").forEach((menu) => {
+    menu.classList.remove("is-open");
+    const picker = document.querySelector(`.bank-picker[data-row="${menu.dataset.row}"]`);
+    if (picker && menu.parentElement !== picker) picker.appendChild(menu);
+    ["left", "top", "width", "height", "maxHeight", "margin", "inset", "right", "bottom", "overflow", "overflowY", "overflowX", "backgroundColor", "position"].forEach(
+      (key) => {
+        menu.style[key] = "";
+      }
+    );
+    const list = menu.querySelector(".bank-picker-list");
+    if (list) {
+      list.style.maxHeight = "";
+      list.style.overflowY = "";
+      list.style.backgroundColor = "";
+    }
+  });
+  document.querySelectorAll(".bank-picker-layer").forEach((layer) => layer.remove());
+  document.querySelectorAll(".bank-picker-toggle").forEach((button) => button.setAttribute("aria-expanded", "false"));
+}
+
+let bankMenuIgnoreUntil = 0;
+
+function positionBankMenu(menu, anchor) {
+  if (!menu || !anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(Math.max(rect.width, 280), Math.max(160, window.innerWidth - 16));
+  const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+  const list = menu.querySelector(".bank-picker-list") || menu;
+  menu.style.position = "fixed";
+  menu.style.margin = "0";
+  menu.style.inset = "auto";
+  menu.style.right = "auto";
+  menu.style.bottom = "auto";
+  menu.style.left = `${left}px`;
+  menu.style.width = `${width}px`;
+  menu.style.height = "auto";
+  menu.style.maxHeight = "none";
+  menu.style.overflow = "hidden";
+  menu.style.backgroundColor = "#ffffff";
+  list.style.height = "auto";
+  list.style.maxHeight = "none";
+  list.style.overflow = "visible";
+  const maxH = Math.min(360, Math.max(120, window.innerHeight - 24));
+  const needed = Math.max(list.scrollHeight, menu.scrollHeight, 48);
+  const height = Math.min(needed, maxH);
+  menu.style.height = `${height}px`;
+  menu.style.maxHeight = `${height}px`;
+  list.style.height = "100%";
+  list.style.maxHeight = "100%";
+  list.style.overflowX = "hidden";
+  list.style.overflowY = needed > maxH ? "auto" : "hidden";
+  list.style.backgroundColor = "#ffffff";
+  const spaceBelow = window.innerHeight - rect.bottom;
+  if (spaceBelow < height + 8 && rect.top > spaceBelow) {
+    menu.style.top = `${Math.max(8, rect.top - height - 4)}px`;
+  } else {
+    menu.style.top = `${Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - height - 8))}px`;
+  }
+}
+
+function openBankPicker(picker, anchor) {
+  if (!picker) return;
+  const row = picker.dataset.row;
+  const menu =
+    picker.querySelector(".bank-picker-menu") || document.querySelector(`.bank-picker-menu[data-row="${row}"]`);
+  const toggle = picker.querySelector(".bank-picker-toggle");
+  const pin = anchor || toggle;
+  if (!menu || !toggle || !pin) return;
+  const already = isBankMenuOpen(menu);
+  closeBankPickers();
+  if (already) return;
+  menu.dataset.row = row;
+  toggle.setAttribute("aria-expanded", "true");
+  const layer = document.createElement("div");
+  layer.className = "bank-picker-layer";
+  document.body.appendChild(layer);
+  layer.appendChild(menu);
+  menu.classList.add("is-open");
+  positionBankMenu(menu, pin);
+  bankMenuIgnoreUntil = Date.now() + 400;
+}
+
+function applyBankChoice(choice) {
+  if (!isTeacherUi()) return;
+  const student = currentStudent();
+  const row = student && student.rows[Number(choice.dataset.row)];
+  if (!row) return;
+  row.bankId = choice.dataset.bank || "";
+  row.importedSource = row.bankId ? `manual:${row.bankId}` : "manual:";
+  closeBankPickers();
+  persistCurrent()
+    .then(() => renderTable())
+    .catch((error) => setSaveStatus(error.message));
+}
+
+let bankDeleteBusy = false;
+
+async function deletePracticeBank(bankId) {
+  const wanted = String(bankId || "");
+  if (!wanted.startsWith("pdf-") || bankDeleteBusy) return;
+  const bank = (state.banks || []).find((item) => item.id === wanted);
+  const title = (bank && (bank.title || bank.id)) || "этот набор";
+  if (!confirm(`Удалить «${title}» из практических заданий?`)) return;
+  closeBankPickers();
+  bankDeleteBusy = true;
+  setSaveStatus("Удаляю набор…");
+  try {
+    const data = await api("/api/banks/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: wanted }),
+    });
+    if (Array.isArray(data.banks)) state.banks = data.banks;
+    if (Array.isArray(data.students)) state.students = data.students;
+    else await loadStudents();
+    setSaveStatus("Набор удалён");
+    renderTable();
+  } finally {
+    bankDeleteBusy = false;
+  }
+}
+
+function rowHasLessonContent(row) {
+  if (!row || typeof row !== "object") return false;
+  if (["held", "missed"].includes(row.lessonStatus)) return true;
+  if (["topic", "theory", "homework", "comment"].some((key) => String(row[key] || "").trim())) {
+    return true;
+  }
+  if (String(row.bankId || "").trim()) return true;
+  if (String(row.theoryFileId || "").trim()) return true;
+  if (Array.isArray(row.theoryFiles) && row.theoryFiles.some((item) => item && item.id)) return true;
+  if (String(row.homeworkFileId || "").trim()) return true;
+  return false;
+}
+
+function visibleRowIndexes(student) {
+  const rows = Array.isArray(student.rows) ? student.rows : [];
+  if (!isStudentView()) {
+    return rows.map((_, index) => index);
+  }
+  if (!rows.length) return [];
+  const filled = [];
+  rows.forEach((row, index) => {
+    if (rowHasLessonContent(row)) filled.push(index);
+  });
+  const visible = !filled.length ? [0] : filled.slice();
+  if (filled.length) {
+    const next = filled[filled.length - 1] + 1;
+    if (next < rows.length && !visible.includes(next)) {
+      visible.push(next);
+    }
+  }
+  const revealed = state.revealedRowIndex;
+  if (Number.isInteger(revealed) && revealed >= 0 && revealed < rows.length && !visible.includes(revealed)) {
+    visible.push(revealed);
+    visible.sort((a, b) => a - b);
+  }
+  return visible;
+}
+
+function trimRowsToScheduleEnd(student) {
+  if (!student || !Array.isArray(student.rows)) return;
+  const endIso = toDateInputValue(student.schedule && student.schedule.endDate);
+  if (!endIso) return;
+  student.rows = student.rows.filter((row) => {
+    if (row && row.extraLesson) return true;
+    const iso = dmyToIso(String((row && row.date) || "").split(",")[0]);
+    return !iso || iso <= endIso;
+  });
+}
+
+function renderTable() {
+  closeBankPickers();
+  const student = currentStudent();
+  if (!student) {
+    if (isTeacherAccount()) renderList();
+    return;
+  }
+  if (!skipTableDomSync) syncTableRowsFromDom(student);
+  skipTableDomSync = false;
+  trimRowsToScheduleEnd(student);
+  if (!isTeacherUi()) hideRowConfirm();
+  document.body.classList.remove("practice-open");
+
+  if (!Array.isArray(student.rows)) {
+    student.rows = [];
+  }
+  if (student.rows.length === 0 && isTeacherUi()) {
+    student.rows = [emptyRow()];
+  }
+
+  state.view = "table";
+  els.listView.classList.add("hidden");
+  els.practiceView.classList.add("hidden");
+  els.tableView.classList.remove("hidden");
+  els.backBtn.classList.toggle("hidden", isStudentView());
+  els.backBtn.textContent = "← К списку";
+  els.tableActions.classList.remove("hidden");
+  els.addStudentBtn.classList.add("hidden");
+  els.templateWrap.classList.add("hidden");
+  if (els.findWrap) els.findWrap.classList.remove("hidden");
+  if (els.settingsBtn) {
+    els.settingsBtn.classList.toggle("hidden", !isTeacherUi());
+  }
+  updateTableCopyButtons();
+  els.pageTitle.textContent = student.name;
+  setPageSubtitle(
+    isStudentView()
+      ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
+      : "Между уроками нажмите «+»: появится отдельный урок, дату ставит педагог, остальные даты не сдвигаются. «Найти» открывает строку по дате."
+  );
+  updateModeChrome();
+  updateShareBar();
+
+  const rowIndexes = visibleRowIndexes(student);
+  if (isStudentView() && rowIndexes.length === 0) {
+    els.tableView.innerHTML = `
+      <div class="empty-state">
+        <p>Таблица пока пустая.</p>
+        <p>Когда педагог добавит расписание, здесь появится первая строка занятия.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const toolsHead = isTeacherUi() ? `<th class="col-row-tools"></th>` : "";
+  const colCount = COLUMNS.length + (isTeacherUi() ? 1 : 0);
+  const insertGap = (index) =>
+    isTeacherUi()
+      ? `<tr class="insert-gap"><td colspan="${colCount}">
+          <button class="insert-lesson" type="button" data-insert="${index}" title="Добавить урок вне расписания. Дату ставит педагог, остальные строки не сдвигаются">+</button>
+        </td></tr>`
+      : "";
+  const head = `${toolsHead}${COLUMNS.map((column) => `<th class="${column.className}">${column.label}</th>`).join("")}`;
+  const renderLessonRow = (rowIndex) => {
+      const row = student.rows[rowIndex];
+      const upcoming = isStudentView() && !rowHasLessonContent(row);
+      const cells = COLUMNS.map((column) => {
+        if (column.key === "date") {
+          const status = ["held", "missed"].includes(row.lessonStatus) ? row.lessonStatus : "";
+          if (isStudentView()) {
+            const badge = status
+              ? `<span class="lesson-status-badge status-${status}">${
+                  status === "held" ? "✓ Было занятие" : "× Занятия не было"
+                }</span>`
+              : "";
+            return renderStudentTextCell(column, row.date || "", { extra: badge, linkify: false });
+          }
+          const controls = `<div class="lesson-status-controls" role="group" aria-label="Состоялось ли занятие">
+                <button class="lesson-status-btn status-held" type="button" data-row="${rowIndex}" data-status="held" aria-pressed="${
+                  status === "held"
+                }">Было</button>
+                <button class="lesson-status-btn status-missed" type="button" data-row="${rowIndex}" data-status="missed" aria-pressed="${
+                  status === "missed"
+                }">Не было</button>
+              </div>`;
+          const pasteReady = Boolean(state.rowClipboard && state.rowClipboard.row);
+          const rowTools = `<div class="date-row-tools">
+                <button class="row-copy-btn" type="button" data-row="${rowIndex}" title="Скопировать строку" aria-label="Скопировать строку">${ROW_COPY_ICON}</button>
+                <button class="row-paste-btn${pasteReady ? "" : " is-disabled"}" type="button" data-row="${rowIndex}" title="${
+                  pasteReady ? "Вставить скопированную строку" : "Сначала скопируйте строку"
+                }" aria-label="Вставить строку">${ROW_PASTE_ICON}</button>
+              </div>`;
+          return `<td class="col-date" data-label="${escapeHtml(column.label)}">
+            <div class="date-cell">
+              <textarea class="cell-fill" data-row="${rowIndex}" data-key="date" rows="1" spellcheck="false" placeholder="${
+                row.extraLesson ? "дату ставит педагог, например 12.09.2026, 17:00" : "например 10.09.2026, 17:00"
+              }">${escapeHtml(
+                String(row.date || "")
+              )}</textarea>
+              <div class="date-cell-bottom">
+                ${controls}
+                ${rowTools}
+              </div>
+            </div>
+          </td>`;
+        }
+        if (column.key === "practice") {
+          const fraction = row.bankId ? row.practice || "0/0" : "—";
+          const teacherSelect = isTeacherUi() ? bankPickerHtml(rowIndex, row.bankId || "") : "";
+          const attach = isTeacherUi()
+            ? `<label class="practice-upload" title="Загрузить PDF с заданиями">
+                <span aria-hidden="true">+</span>
+                <span class="attach-file-short">PDF</span>
+                <span class="attach-file-label">Выдать файл</span>
+                <input type="file" class="visually-hidden" accept="application/pdf,.pdf" data-row="${rowIndex}" data-field="practice" />
+              </label>`
+            : "";
+          const practiceFile = row.practiceFileId
+            ? `<div class="material-tools">
+                <a class="file-open" href="${escapeHtml(fileUrl(row.practiceFileId, row.practiceFileName || row.practiceFileId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+                  row.practiceFileName || "открыть"
+                )}</a>
+                ${
+                  isTeacherUi()
+                    ? `<button class="file-remove" type="button" data-row="${rowIndex}" data-field="practice">Убрать</button>`
+                    : ""
+                }
+              </div>`
+            : "";
+          const openBtn = row.bankId
+            ? `<button class="practice-link" type="button" data-row="${rowIndex}" data-bank="${escapeHtml(
+                row.bankId
+              )}">${escapeHtml(fraction)}</button>`
+            : isTeacherUi()
+              ? `<button class="practice-open-hint" type="button" data-row="${rowIndex}">PDF или набор</button>`
+              : `<span class="hint">пока нет заданий</span>`;
+          return `<td class="col-practice practice-cell" data-label="${escapeHtml(column.label)}"><div class="practice-box">${teacherSelect}<div class="practice-actions">${attach}${practiceFile}${
+            isTeacherUi() || row.bankId ? openBtn : "—"
+          }</div></div></td>`;
+        }
+        if (column.key === "progress") {
+          if (!row.bankId) {
+            return `<td class="col-progress progress-cell" data-label="${escapeHtml(column.label)}"></td>`;
+          }
+          const color = row.progressColor || "red";
+          return `<td class="col-progress progress-cell" data-label="${escapeHtml(column.label)}"><div class="progress-swatch progress-${color}">${escapeHtml(
+            row.progress || "0%"
+          )}</div></td>`;
+        }
+        if (column.key === "theory" || column.key === "homework") {
+          return renderMaterialCell(row, rowIndex, column);
+        }
+        const value = row[column.key] ?? "";
+        if (isStudentView()) {
+          return renderStudentTextCell(column, value);
+        }
+        return `<td class="${column.className}" data-label="${escapeHtml(column.label)}">
+          <textarea class="cell-fill" data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false">${escapeHtml(
+            String(value)
+          )}</textarea>
+        </td>`;
+      }).join("");
+      const tools = isTeacherUi()
+        ? `<td class="col-row-tools" data-label="Урок">
+            <button class="row-delete" type="button" data-row="${rowIndex}" title="Удалить этот урок">×</button>
+          </td>`
+        : "";
+      const classes = [];
+      if (upcoming) classes.push("lesson-upcoming");
+      if (row.extraLesson) classes.push("extra-lesson");
+      if (row.lessonStatus === "held") classes.push("lesson-held");
+      if (row.lessonStatus === "missed") classes.push("lesson-missed");
+      const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";
+      return `<tr${classAttr} data-row="${rowIndex}">${tools}${cells}</tr>${
+        isTeacherUi() ? insertGap(rowIndex + 1) : ""
+      }`;
+  };
+  const body = isTeacherUi()
+    ? insertGap(0) + rowIndexes.map(renderLessonRow).join("")
+    : rowIndexes.map(renderLessonRow).join("");
+
+  els.tableView.innerHTML = `
+    <div class="table-wrap${isTeacherUi() ? " teacher-table" : ""}" data-student-id="${escapeHtml(String(student.id || ""))}">
+      <table>
+        <thead><tr>${head}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+  if (isTeacherUi()) {
+    importLinkedPdfs(student)
+      .then((changed) => {
+        if (changed && state.view === "table" && state.currentId === student.id) renderTable();
+      })
+      .catch(() => {});
+  }
+}
+
+function closePractice() {
+  document.body.classList.remove("practice-open");
+  loadStudents().then(renderTable).catch((error) => setSaveStatus(error.message));
+}
+
+function capturePracticeScroll(taskN) {
+  const view = els.practiceView;
+  const card =
+    taskN != null && view ? view.querySelector(`.task-card[data-n="${taskN}"]`) : null;
+  return {
+    windowY: window.scrollY || window.pageYOffset || 0,
+    viewY: view ? view.scrollTop : 0,
+    cardTop: card ? card.getBoundingClientRect().top : null,
+    taskN,
+  };
+}
+
+function restorePracticeScroll(snapshot, taskN, role) {
+  const n = taskN != null ? taskN : snapshot && snapshot.taskN;
+  const apply = () => {
+    const view = els.practiceView;
+    if (!view) return;
+    const card = n != null ? view.querySelector(`.task-card[data-n="${n}"]`) : null;
+    if (card && snapshot && snapshot.cardTop != null) {
+      const delta = card.getBoundingClientRect().top - snapshot.cardTop;
+      if (Math.abs(delta) >= 1) {
+        view.scrollTop += delta;
+      }
+      const still = card.getBoundingClientRect().top - snapshot.cardTop;
+      if (Math.abs(still) >= 1) {
+        window.scrollBy(0, still);
+      }
+    } else if (snapshot) {
+      window.scrollTo(0, snapshot.windowY);
+      view.scrollTop = snapshot.viewY;
+    }
+    const input =
+      role && n != null
+        ? view.querySelector(`input[data-role="${role}"][data-n="${n}"]`)
+        : null;
+    if (input && !input.readOnly) {
+      try {
+        input.focus({ preventScroll: true });
+      } catch (_error) {
+        /* не вызываем focus() без preventScroll — это снова уводит вверх */
+      }
+    }
+  };
+  apply();
+  queueMicrotask(apply);
+  requestAnimationFrame(() => {
+    apply();
+    requestAnimationFrame(apply);
+  });
+  setTimeout(apply, 0);
+  setTimeout(apply, 32);
+}
+
+async function openPractice(bankId, options = {}) {
+  const student = currentStudent();
+  if (!student || !bankId) return;
+  const keepScroll = Boolean(options.keepScroll);
+  const snapshot = keepScroll ? capturePracticeScroll(options.focusN) : null;
+  hideRowConfirm();
+  hideFindDialog();
+  const asStudent = isStudentView() ? "&asStudent=1" : "";
+  const data = await api(
+    `/api/practice?studentId=${encodeURIComponent(student.id)}&bankId=${encodeURIComponent(bankId)}${asStudent}`
+  );
+  state.view = "practice";
+  state.practice = data;
+  document.body.classList.add("practice-open");
+  els.listView.classList.add("hidden");
+  els.tableView.classList.add("hidden");
+  els.practiceView.classList.remove("hidden");
+  els.tableActions.classList.add("hidden");
+  if (els.settingsBtn) els.settingsBtn.classList.add("hidden");
+  els.addStudentBtn.classList.add("hidden");
+  els.backBtn.classList.remove("hidden");
+  els.backBtn.textContent = "← К таблице";
+  els.pageTitle.textContent = data.title;
+  setPageSubtitle(isStudentView() ? `${student.name}. Впишите номера рядов и нажмите «Сохранить».` : student.name);
+  updateModeChrome();
+  updateShareBar();
+  renderPractice();
+  if (keepScroll) {
+    restorePracticeScroll(snapshot, options.focusN, options.focusRole);
+  } else {
+    window.scrollTo(0, 0);
+    els.practiceView.scrollTop = 0;
+  }
+}
+
+function renderPractice() {
+  const data = state.practice;
+  if (!data) return;
+  const stats = data.stats || { done: 0, total: 0, percent: 0, correct: 0 };
+  const total = Number(stats.total) || 0;
+  const done = Number(stats.done) || 0;
+  const correct = Number(stats.correct) || 0;
+  const percent = Number(stats.percent) || 0;
+  const color = data.statsColor || "red";
+  const wordBank =
+    (data.tasks || []).length > 0 &&
+    (data.tasks || []).every((task) => task.kind === "phrases" || task.kind === "word" || task.word);
+  const statsHint = wordBank
+    ? "Запишите слово, как в бланке ЕГЭ."
+    : "Запишите номера рядов без пробелов, как в бланке ЕГЭ: например 245.";
+  const tasks = (data.tasks || [])
+    .map((task) => {
+      const optionItems = (task.options || []).filter(Boolean);
+      const isPhrases = task.kind === "phrases";
+      const isWord = Boolean(task.word) || task.kind === "word" || isPhrases;
+      const listTag = isPhrases ? "ul" : "ol";
+      const skip = `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`;
+      const options = optionItems.length
+        ? `${skip}<${listTag} class="task-options${isPhrases ? " task-phrases" : ""}">${optionItems
+            .map((option) => `<li>${escapeHtml(option)}</li>`)
+            .join("")}</${listTag}>`
+        : "";
+      const answerPlaceholder = isWord ? "слово" : "245 или 2, 4, 5";
+      const keyPlaceholder = isWord ? "например слово" : "например 245";
+      const keyField = isTeacherUi()
+        ? `<label class="task-field-label">Ключ <input class="key-input" data-n="${task.n}" data-role="key" value="${escapeHtml(
+            task.answer || ""
+          )}" placeholder="${keyPlaceholder}" /></label>`
+        : "";
+      const correctAnswer = task.correctAnswer || "";
+      const correctReveal =
+        task.status === "bad" && correctAnswer
+          ? `<p class="task-correct">Правильный ответ: <strong>${escapeHtml(correctAnswer)}</strong></p>`
+          : "";
+      const locked = Boolean(task.locked) || (!isTeacherUi() && Boolean(String(task.given || "").trim()));
+      const saveControl = locked
+        ? `<p class="task-locked">Ответ сохранён. Изменить его нельзя.</p>`
+        : `<button class="primary-btn save-answer" type="button" data-n="${task.n}">Сохранить</button>`;
+      return `
+        <article class="task-card ${task.status || ""} ${locked ? "locked" : ""}" data-n="${task.n}">
+          <div class="task-card-top">
+            <span class="task-badge">№ ${task.n}</span>
+            <span class="task-tag">Задание ЕГЭ</span>
+          </div>
+          ${renderTaskPrompt(task.prompt || data.instruction || "")}
+          ${options}
+          <div class="task-actions">
+            <label class="task-field-label">Ответ ученика
+              <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="${answerPlaceholder}" ${locked ? "readonly" : ""} />
+            </label>
+            ${saveControl}
+            ${keyField}
+            ${isTeacherUi() ? `<button class="secondary-btn save-key" type="button" data-n="${task.n}">Сохранить ключ</button>` : ""}
+          </div>
+          ${correctReveal}
+        </article>
+      `;
+    })
+    .join("");
+
+  els.practiceView.innerHTML = `
+    <div class="practice-screen">
+      <div class="practice-toolbar">
+        <button class="primary-btn practice-back" type="button">← К таблице</button>
+        <h2>${escapeHtml(data.title || "Задания")}</h2>
+      </div>
+      <div class="practice-summary progress-${escapeHtml(color)}">
+        <div class="stats-text">Выполнено: ${done} из ${total}. Верно: ${correct} из ${total} (${percent}%).</div>
+        <div class="stats-hint">${escapeHtml(statsHint)}</div>
+      </div>
+      <div class="task-list">${tasks}</div>
+    </div>
+  `;
+}
+
+function initial(name) {
+  const trimmed = String(name || "").trim();
+  return trimmed ? trimmed[0].toUpperCase() : "?";
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function formatTaskPrompt(text) {
+  let raw = String(text || "").replace(/\r/g, "");
+  raw = raw.replace(
+    /(Запишите номера этих предложений|Запишите номера ответов|запишите слово правильно|Запишите это слово)\.?\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«"])/gi,
+    "$1.\n\n"
+  );
+  raw = raw.replace(/\n{3,}/g, "\n\n");
+  return raw;
+}
+
+function renderTaskPrompt(text) {
+  const raw = formatTaskPrompt(text).trim();
+  const parts = raw.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  const skip = `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`;
+  const blocks = (parts.length ? parts : [raw]).map(
+    (part) => `<p class="task-prompt">${escapeHtml(part).replaceAll("\n", "<br>")}</p>`
+  );
+  return blocks.join(skip);
+}
+
+function linkifyText(text) {
+  const raw = String(text || "");
+  if (!raw.trim()) {
+    return "";
+  }
+  return raw.split(/(https?:\/\/[^\s]+)/g).map((part, index) => {
+    if (index % 2 === 1) {
+      const href = part.replaceAll('"', "%22");
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(part)}</a>`;
+    }
+    return escapeHtml(part).replaceAll("\n", "<br>");
+  }).join("");
+}
+
+function fileUrl(id, name) {
+  return `/api/file?id=${encodeURIComponent(id)}&name=${encodeURIComponent(name || id)}`;
+}
+
+function firstPdfUrl(text) {
+  const matches = String(text || "").match(/https?:\/\/[^\s<>"]+/gi) || [];
+  return matches.map((item) => item.replace(/[),.;]+$/g, "")).find((item) => isPdfUrl(item)) || "";
+}
+
+function isPdfUrl(url) {
+  const raw = String(url || "").trim();
+  const lowered = raw.toLowerCase();
+  if (lowered.endsWith(".pdf")) return true;
+  if (/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]{20,}/i.test(raw)) return true;
+  if (lowered.includes("drive.google.com") && lowered.includes("id=")) return true;
+  if (lowered.includes("dropbox.com") && (lowered.endsWith(".pdf") || lowered.includes("dl="))) return true;
+  return false;
+}
+
+const importFailed = new Set();
+let importInFlight = false;
+
+async function importLinkedPdfs(student) {
+  if (!student || !isTeacherUi() || !state.pdfImport || importInFlight) return false;
+  let changed = false;
+  for (let index = 0; index < (student.rows || []).length; index += 1) {
+    const row = student.rows[index];
+    if (String(row.importedSource || "").startsWith("manual:")) continue;
+    const url = firstPdfUrl(row.practice);
+    let payload = null;
+    if (url && url !== row.importedSource) {
+      payload = { studentId: student.id, row: index, url };
+    } else if (!row.bankId) {
+      const name = String(row.practiceFileName || "").toLowerCase();
+      if (name.endsWith(".pdf") && row.practiceFileId) {
+        payload = { studentId: student.id, row: index, fromField: "practice" };
+      }
+    }
+    if (!payload) continue;
+    const key = `${student.id}:${index}:${payload.url || payload.fromField}:${row.practiceFileId || ""}`;
+    if (importFailed.has(key)) continue;
+    importInFlight = true;
+    setSaveStatus("Разбираю PDF…");
+    try {
+      const data = await api("/api/import-pdf", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      replaceStudent(data.student);
+      await loadBanks();
+      changed = true;
+      setSaveStatus(data.total ? `Готово: ${data.total} заданий из PDF` : "Задания из PDF готовы");
+    } catch (error) {
+      importFailed.add(key);
+      setSaveStatus(error.message);
+    } finally {
+      importInFlight = false;
+    }
+  }
+  return changed;
+}
+
+function renderStudentTextCell(column, value, options = {}) {
+  const extra = options.extra || "";
+  const raw = String(value ?? "");
+  const text =
+    options.linkify === false
+      ? (raw.trim() ? escapeHtml(raw).replaceAll("\n", "<br>") : "")
+      : linkifyText(raw);
+  const body = text ? `<div class="material-text">${text}</div>` : extra ? "" : "—";
+  return `<td class="${column.className}" data-label="${escapeHtml(column.label)}"><div class="material-cell student-material">${body}${extra}</div></td>`;
+}
+
+function renderMaterialCell(row, rowIndex, column) {
+  const field = column.key;
+  const value = String(row[field] ?? "");
+  const theoryFiles = field === "theory" ? rowTheoryFiles(row) : [];
+  const fileId = field === "theory" ? "" : row[`${field}FileId`] || "";
+  const fileName = row[`${field}FileName`] || "";
+  const fileChips =
+    field === "theory"
+      ? theoryFiles
+          .map(
+            (file) => `<span class="file-chip">
+                <a class="file-open" href="${escapeHtml(fileUrl(file.id, file.name || file.id))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+                  file.name || "открыть"
+                )}</a>
+                ${
+                  isTeacherUi()
+                    ? `<button class="file-remove" type="button" data-row="${rowIndex}" data-field="theory" data-file-id="${escapeHtml(
+                        file.id
+                      )}" title="Убрать" aria-label="Убрать ${escapeHtml(file.name || "файл")}">×</button>`
+                    : ""
+                }
+              </span>`
+          )
+          .join("")
+      : fileId
+        ? `<a class="file-open" href="${escapeHtml(fileUrl(fileId, fileName || fileId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+            fileName || "открыть"
+          )}</a>`
+        : "";
+  if (isStudentView()) {
+    const text = linkifyText(value);
+    const files = fileChips || (fileId
+      ? `<a class="file-open" href="${escapeHtml(fileUrl(fileId, fileName || fileId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+          fileName || "открыть"
+        )}</a>`
+      : "");
+    const body = text || files ? `${text ? `<div class="material-text">${text}</div>` : ""}${files}` : "—";
+    return `<td class="${column.className}" data-label="${escapeHtml(column.label)}"><div class="material-cell student-material">${body}</div></td>`;
+  }
+  const placeholder = 'placeholder="файл или заметка"';
+  const multiple = field === "theory" ? "multiple" : "";
+  const attachTitle = field === "theory" && theoryFiles.length ? "Прикрепить ещё документ" : "Прикрепить документ";
+  const attach = `<label class="file-corner" title="${attachTitle}">
+      <span class="file-corner-mark" aria-hidden="true">+</span>
+      <span class="attach-file-label">Выдать файл</span>
+      <input type="file" class="visually-hidden" data-row="${rowIndex}" data-field="${field}" ${multiple} />
+    </label>`;
+  const remove =
+    field === "theory"
+      ? ""
+      : fileId
+        ? `<button class="file-remove" type="button" data-row="${rowIndex}" data-field="${field}">Убрать</button>`
+        : "";
+  const tools = fileChips || fileId ? `<div class="material-tools">${fileChips}${remove}</div>` : "";
+  return `<td class="${column.className}" data-label="${escapeHtml(column.label)}">
+    <div class="material-cell">
+      <textarea class="cell-fill" data-row="${rowIndex}" data-key="${field}" rows="1" spellcheck="false" ${placeholder}>${escapeHtml(value)}</textarea>
+      ${attach}
+      ${tools}
+    </div>
+  </td>`;
+}
+
+function replaceStudent(student, options = {}) {
+  if (!student || !student.id) return;
+  const index = state.students.findIndex((item) => item.id === student.id);
+  if (index < 0) return;
+  const current = state.students[index];
+  if (options.keepRicher && current && tableContentScore(current) > tableContentScore(student)) {
+    student = {
+      ...student,
+      rows: cloneTableData(current.rows || []),
+      template: current.template || student.template,
+      schedule: current.schedule || student.schedule,
+    };
+  }
+  state.students[index] = student;
+  skipTableDomSync = true;
+}
+
+function afterLogin() {
+  showApp();
+  startPolling();
+  if (isTeacherAccount()) {
+    renderList();
+  } else {
+    state.currentId = state.me.studentId || (state.students[0] && state.students[0].id);
+    renderTable();
+  }
+}
+
+els.addStudentBtn.addEventListener("click", openModal);
+if (els.settingsBtn) {
+  els.settingsBtn.addEventListener("click", () => {
+    if (state.currentId) openSettings(state.currentId);
+  });
+}
+if (els.copyTableBtn) {
+  els.copyTableBtn.addEventListener("click", () => {
+    copyCurrentTable().catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+  });
+}
+if (els.pasteTableBtn) {
+  els.pasteTableBtn.addEventListener("click", () => {
+    pasteCopiedTable().catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+  });
+}
+if (els.previewBtn) {
+  els.previewBtn.addEventListener("click", () => {
+    if (state.currentId) enterStudentPreview(state.currentId);
+  });
+}
+if (els.exitPreviewBtn) {
+  els.exitPreviewBtn.addEventListener("click", exitStudentPreview);
+}
+els.cancelModal.addEventListener("click", closeModal);
+els.modal.addEventListener("click", (event) => {
+  if (event.target === els.modal) closeModal();
+});
+els.studentForm.addEventListener("change", (event) => {
+  if (event.target.name === "template") toggleSecondSlot();
+});
+if (els.startDate) {
+  const onStartDateChange = () => {
+    syncStartDateWeekday();
+    if (!els.endDate) return;
+    syncEndDateLimits();
+    const startValue = els.startDate.value;
+    if (!startValue) return;
+    if (!els.endDate.value || els.endDate.value < startValue) {
+      els.endDate.value = defaultEndDateForStart(startValue, formSlotsForEndDate());
+    }
+  };
+  els.startDate.addEventListener("change", onStartDateChange);
+  els.startDate.addEventListener("input", onStartDateChange);
+}
+els.backBtn.addEventListener("click", () => {
+  if (state.view === "practice") {
+    closePractice();
+    return;
+  }
+  renderList();
+});
+if (els.templateSelect) {
+  els.templateSelect.addEventListener("change", () => {
+    const student = currentStudent();
+    if (!student || !isTeacherUi()) return;
+    student.template = els.templateSelect.value;
+    const second = document.getElementById("table-second-slot");
+    if (second) second.classList.toggle("hidden", student.template !== "twice");
+    scheduleSave();
+  });
+}
+if (els.findRowBtn) {
+  els.findRowBtn.addEventListener("click", () => {
+    if (!currentStudent()) {
+      setSaveStatus("Сначала откройте таблицу ученика.");
+      return;
+    }
+    showFindDialog();
+  });
+}
+if (els.findCancel) {
+  els.findCancel.addEventListener("click", hideFindDialog);
+}
+if (els.findDialog) {
+  els.findDialog.addEventListener("click", (event) => {
+    if (event.target === els.findDialog) hideFindDialog();
+  });
+}
+if (els.findForm) {
+  els.findForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const query = els.findDate ? els.findDate.value.trim() : "";
+    if (!query) {
+      if (els.findError) els.findError.textContent = "Введите дату, например 10.09.2026";
+      return;
+    }
+    const result = findLessonByDate(query);
+    if (!result.ok) {
+      if (els.findError) els.findError.textContent = result.error;
+      return;
+    }
+    hideFindDialog();
+  });
+}
+if (els.rowConfirmYes) {
+  els.rowConfirmYes.addEventListener("click", () => {
+    const index = state.pendingDeleteRow;
+    if (index == null) {
+      hideRowConfirm();
+      return;
+    }
+    deleteLessonAt(index).catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+  });
+}
+if (els.rowConfirmNo) {
+  els.rowConfirmNo.addEventListener("click", hideRowConfirm);
+}
+if (els.rowConfirm) {
+  els.rowConfirm.addEventListener("click", (event) => {
+    if (event.target === els.rowConfirm) hideRowConfirm();
+  });
+}
+
+els.studentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!els.createdBox.classList.contains("hidden") && state.pendingNewStudent) {
+    closeModal(true);
+    return;
+  }
+  els.modalError.textContent = "";
+  const name = els.studentName.value.trim();
+  if (!name) {
+    els.modalError.textContent = "Нужно имя ученика";
+    return;
+  }
+  const { template, slots, startDate, endDate } = collectCreateSlots();
+  if (startDate && endDate && endDate < startDate) {
+    els.modalError.textContent = "Дата последнего занятия не может быть раньше первого";
+    return;
+  }
+  try {
+    if (state.settingsStudentId) {
+      clearTimeout(saveTimer);
+      await saveChain.catch(() => {});
+      bumpSaveEpoch(state.settingsStudentId);
+      const data = await api("/api/schedule", {
+        method: "POST",
+        body: JSON.stringify({
+          id: state.settingsStudentId,
+          name,
+          template,
+          startDate,
+          endDate,
+          slots,
+          regenerate: true,
+        }),
+      });
+      replaceStudent(data.student);
+      trimRowsToScheduleEnd(data.student);
+      state.currentId = data.student.id;
+      closeModal();
+      setSaveStatus("Настройки сохранены");
+      renderTable();
+      return;
+    }
+    const data = await api("/api/students", {
+      method: "POST",
+      body: JSON.stringify({ name, template, startDate, endDate, slots }),
+    });
+    state.students.push(data.student);
+    state.currentId = data.student.id;
+    state.pendingNewStudent = true;
+    els.createFields.classList.add("hidden");
+    els.createSubmit.textContent = "Открыть таблицу";
+    els.cancelModal.textContent = "К списку";
+    showCreatedAccess(
+      data.student.name,
+      data.login || data.student.login,
+      data.password,
+      "Сохраните эти данные и отправьте ученику. Пароль больше не покажется."
+    );
+  } catch (error) {
+    els.modalError.textContent = error.message;
+  }
+});
+
+els.listView.addEventListener("click", async (event) => {
+  const card = event.target.closest(".card");
+  if (!card) return;
+  const id = card.dataset.id;
+  if (event.target.closest(".delete-student")) {
+    const student = state.students.find((item) => item.id === id);
+    const label = student ? student.name : "этого ученика";
+    if (!confirm(`Удалить таблицу ученика «${label}»?`)) return;
+    try {
+      await api("/api/students/delete", { method: "POST", body: JSON.stringify({ id }) });
+      state.students = state.students.filter((item) => item.id !== id);
+      renderList();
+    } catch (error) {
+      alert(error.message);
+    }
+    return;
+  }
+  if (event.target.closest(".preview-student")) {
+    enterStudentPreview(id);
+    return;
+  }
+  if (event.target.closest(".open-settings")) {
+    openSettings(id);
+    return;
+  }
+  if (event.target.closest(".open-table")) {
+    state.previewAsStudent = false;
+    state.currentId = id;
+    renderTable();
+  }
+});
+
+els.tableView.addEventListener("input", (event) => {
+  const area = event.target.closest("textarea");
+  if (!area || area.readOnly) return;
+  const student = currentStudent();
+  if (!student) return;
+  const row = student.rows[Number(area.dataset.row)];
+  if (!row) return;
+  row[area.dataset.key] = area.value;
+  scheduleSave();
+});
+
+els.tableView.addEventListener("change", (event) => {
+  const fileInput = event.target.closest("input[type='file'][data-field]");
+  if (fileInput) {
+    const files = Array.from((fileInput.files && fileInput.files) || []);
+    const field = fileInput.dataset.field;
+    const row = fileInput.dataset.row;
+    fileInput.value = "";
+    if (!files.length || !isTeacherUi()) return;
+    const student = currentStudent();
+    if (!student) return;
+    const uploadOne = (file) => {
+      const body = new FormData();
+      body.append("studentId", student.id);
+      body.append("row", row);
+      body.append("field", field);
+      body.append("file", file);
+      return fetch("/api/upload", { method: "POST", body, credentials: "same-origin", cache: "no-store" }).then(
+        async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || "Не удалось загрузить файл");
+          return data;
+        }
+      );
+    };
+    setSaveStatus(files.length > 1 ? "Загружаю файлы…" : "Загружаю файл…");
+    persistCurrent()
+      .then(async () => {
+        let last = null;
+        for (const file of files) {
+          last = await uploadOne(file);
+          if (last && last.student) replaceStudent(last.student);
+        }
+        await loadBanks();
+        renderTable();
+        if (last && last.importError) {
+          setSaveStatus(last.importError);
+          alert(last.importError);
+        } else if (last && last.total) {
+          setSaveStatus(`Готово: ${last.total} заданий из PDF`);
+        } else {
+          setSaveStatus(files.length > 1 ? "Файлы прикреплены" : "Файл прикреплён");
+        }
+      })
+      .catch((error) => {
+        const friendly = friendlyNetworkError(error);
+        setSaveStatus(friendly.message);
+        alert(friendly.message);
+        renderTable();
+      });
+    return;
+  }
+  const select = event.target.closest("select[data-role='bank']");
+  if (!select || !isTeacherUi()) return;
+  const student = currentStudent();
+  if (!student) return;
+  const row = student.rows[Number(select.dataset.row)];
+  if (!row) return;
+  row.bankId = select.value;
+  row.importedSource = select.value ? `manual:${select.value}` : "manual:";
+  persistCurrent()
+    .then(() => renderTable())
+    .catch((error) => setSaveStatus(error.message));
+});
+
+els.tableView.addEventListener("mousedown", (event) => {
+  if (event.target.closest(".row-copy-btn, .row-paste-btn")) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+});
+
+els.tableView.addEventListener("click", async (event) => {
+  const copyRowBtn = event.target.closest(".row-copy-btn");
+  if (copyRowBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    copyRowAt(Number(copyRowBtn.dataset.row));
+    return;
+  }
+  const pasteRowBtn = event.target.closest(".row-paste-btn");
+  if (pasteRowBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    pasteRowAt(Number(pasteRowBtn.dataset.row)).catch((error) => {
+      setSaveStatus(error.message);
+    });
+    return;
+  }
+  const statusBtn = event.target.closest(".lesson-status-btn");
+  if (statusBtn) {
+    const student = currentStudent();
+    const row = student && student.rows[Number(statusBtn.dataset.row)];
+    if (!row || !isTeacherUi()) return;
+    const selected = statusBtn.dataset.status;
+    row.lessonStatus = row.lessonStatus === selected ? "" : selected;
+    scheduleSave();
+    renderTable();
+    return;
+  }
+  const insertBtn = event.target.closest(".insert-lesson");
+  if (insertBtn) {
+    insertLessonAt(Number(insertBtn.dataset.insert));
+    return;
+  }
+  const deleteBtn = event.target.closest(".row-delete");
+  if (deleteBtn) {
+    showRowConfirm(Number(deleteBtn.dataset.row));
+    return;
+  }
+  if (!event.target.closest("textarea, input, select, button, a, label")) {
+    const cell = event.target.closest("td");
+    const area = cell && cell.querySelector("textarea:not([readonly])");
+    if (area) {
+      area.focus();
+      return;
+    }
+  }
+  const remove = event.target.closest(".file-remove");
+  if (remove) {
+    const student = currentStudent();
+    if (!student || !isTeacherUi()) return;
+    api("/api/file/delete", {
+      method: "POST",
+      body: JSON.stringify({
+        studentId: student.id,
+        row: Number(remove.dataset.row),
+        field: remove.dataset.field,
+        fileId: remove.dataset.fileId || "",
+      }),
+    })
+      .then((data) => {
+        replaceStudent(data.student);
+        renderTable();
+        setSaveStatus("Файл убран");
+      })
+      .catch((error) => {
+        setSaveStatus(error.message);
+        alert(error.message);
+      });
+    return;
+  }
+  const link = event.target.closest(".practice-link");
+  if (link) {
+    openPractice(link.dataset.bank).catch((error) => alert(error.message));
+  }
+});
+
+els.practiceView.addEventListener("click", async (event) => {
+  if (event.target.closest(".practice-back")) {
+    closePractice();
+    return;
+  }
+  const student = currentStudent();
+  const practice = state.practice;
+  if (!student || !practice) return;
+  const saveAnswer = event.target.closest(".save-answer");
+  if (saveAnswer) {
+    const n = Number(saveAnswer.dataset.n);
+    if (!isTeacherUi()) {
+      const task = (practice.tasks || []).find((item) => Number(item.n) === n);
+      if (task && String(task.given || "").trim()) {
+        alert("Ответ уже сохранён. Изменить его нельзя.");
+        return;
+      }
+    }
+    const input = els.practiceView.querySelector(`input[data-role='given'][data-n='${n}']`);
+    try {
+      const data = await api("/api/progress", {
+        method: "POST",
+        body: JSON.stringify({
+          studentId: student.id,
+          bankId: practice.id,
+          n,
+          answer: input ? input.value : "",
+        }),
+      });
+      await openPractice(practice.id, { keepScroll: true, focusN: n, focusRole: "given" });
+      setSaveStatus(`Сохранено, ${data.stats.done}/${data.stats.total}`);
+    } catch (error) {
+      alert(error.message);
+    }
+    return;
+  }
+  const saveKey = event.target.closest(".save-key");
+  if (saveKey) {
+    if (!isTeacherUi()) return;
+    const n = Number(saveKey.dataset.n);
+    const input = els.practiceView.querySelector(`input[data-role='key'][data-n='${n}']`);
+    try {
+      await api("/api/bank-key", {
+        method: "POST",
+        body: JSON.stringify({
+          bankId: practice.id,
+          n,
+          answer: input ? input.value : "",
+        }),
+      });
+      await openPractice(practice.id, { keepScroll: true, focusN: n, focusRole: "key" });
+      setSaveStatus("Ключ сохранён");
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+});
+
+if (els.copyLinkBtn) {
+  els.copyLinkBtn.addEventListener("click", async () => {
+    const text = state.publicUrl;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      els.copyLinkBtn.textContent = "Скопировано";
+      setTimeout(() => {
+        els.copyLinkBtn.textContent = "Копировать интернет-ссылку";
+      }, 1500);
+    } catch (_error) {
+      prompt("Скопируйте ссылку:", text);
+    }
+  });
+}
+
+if (els.copyCredsBtn) {
+  els.copyCredsBtn.addEventListener("click", async () => {
+    const text = els.createdCreds ? els.createdCreds.textContent : "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      els.copyCredsBtn.textContent = "Скопировано";
+      setTimeout(() => {
+        els.copyCredsBtn.textContent = "Скопировать для отправки";
+      }, 1500);
+    } catch (_error) {
+      prompt("Скопируйте сообщение ученику:", text);
+    }
+  });
+}
+
+if (els.resetPasswordBtn) {
+  els.resetPasswordBtn.addEventListener("click", async () => {
+    const studentId = state.settingsStudentId;
+    if (!studentId) return;
+    els.modalError.textContent = "";
+    try {
+      const data = await api("/api/students/password", {
+        method: "POST",
+        body: JSON.stringify({ id: studentId, reset: true }),
+      });
+      const student = state.students.find((item) => item.id === studentId);
+      showCreatedAccess(
+        student ? student.name : "",
+        data.login,
+        data.password,
+        "Новый пароль. Старый больше не работает. Отправьте ученику это сообщение."
+      );
+    } catch (error) {
+      els.modalError.textContent = error.message;
+    }
+  });
+}
+
+if (els.loginForm) {
+  els.loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (els.loginError) els.loginError.textContent = "";
+    try {
+      const data = await api("/api/login", {
+        method: "POST",
+        body: JSON.stringify({
+          login: els.loginName.value.trim(),
+          password: els.loginPassword.value,
+        }),
+      });
+      state.me = data.user;
+      state.localTeacher = Boolean(data.localTeacher);
+      state.publicUrl = data.publicUrl || state.publicUrl;
+      await enterApp();
+    } catch (error) {
+      if (els.loginError) els.loginError.textContent = error.message;
+    }
+  });
+}
+
+if (els.logoutBtn) {
+  els.logoutBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    showLogoutConfirm();
+  });
+}
+document.addEventListener(
+  "click",
+  (event) => {
+    const logoutBtn = event.target.closest("#logout-btn");
+    if (logoutBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      showLogoutConfirm();
+    }
+  },
+  true
+);
+if (els.logoutConfirmYes) {
+  els.logoutConfirmYes.addEventListener("click", () => {
+    performLogout();
+  });
+}
+if (els.logoutConfirmNo) {
+  els.logoutConfirmNo.addEventListener("click", hideLogoutConfirm);
+}
+if (els.logoutConfirm) {
+  els.logoutConfirm.addEventListener("click", (event) => {
+    if (event.target === els.logoutConfirm) hideLogoutConfirm();
+  });
+}
+
+function clickElement(event) {
+  const target = event.target;
+  if (target && target.nodeType === 1) return target;
+  return target && target.parentElement ? target.parentElement : null;
+}
+
+document.addEventListener(
+  "click",
+  (event) => {
+    const target = clickElement(event);
+    if (!target || typeof target.closest !== "function") return;
+    const bankDelete = target.closest(".bank-delete");
+    if (bankDelete) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!isTeacherUi()) return;
+      const bankId = bankDelete.getAttribute("data-bank") || bankDelete.dataset.bank || "";
+      deletePracticeBank(bankId).catch((error) => {
+        setSaveStatus(error.message);
+        alert(error.message);
+      });
+      return;
+    }
+    const bankChoice = target.closest(".bank-picker-choice");
+    if (bankChoice) {
+      event.preventDefault();
+      event.stopPropagation();
+      applyBankChoice(bankChoice);
+      return;
+    }
+    const pickerToggle = target.closest(".bank-picker-toggle, .practice-open-hint");
+    if (pickerToggle) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!isTeacherUi()) return;
+      const row = pickerToggle.dataset.row;
+      const picker =
+        pickerToggle.closest(".bank-picker") || document.querySelector(`.bank-picker[data-row="${row}"]`);
+      if (picker) openBankPicker(picker, pickerToggle);
+      return;
+    }
+    if (target.closest(".bank-picker-menu")) return;
+    if (target.closest(".bank-picker-layer") || Date.now() >= bankMenuIgnoreUntil) {
+      closeBankPickers();
+    }
+  },
+  true
+);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeBankPickers();
+});
+
+function startPolling() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    if (state.publicUrl) {
+      clearInterval(pollTimer);
+      return;
+    }
+    try {
+      await loadSession();
+    } catch (_error) {
+      /* окно запуска могли закрыть */
+    }
+  }, 8000);
+}
+
+async function enterApp() {
+  await loadStudents();
+  await loadBanks();
+  afterLogin();
+}
+
+function startErrorHtml(error) {
+  const status = Number(error && error.status) || 0;
+  if (status >= 500) {
+    return `
+      <div class="empty-state">
+        <p>Не получилось загрузить список учеников.</p>
+        <p>Обновите страницу. Если ошибка останется — это сбой сервера, файл «запустить.bat» тут не поможет.</p>
+      </div>
+    `;
+  }
+  return `
+    <div class="empty-state">
+      <p>Не получилось открыть журнал.</p>
+      <p>Запустите файл «запустить.bat».</p>
+    </div>
+  `;
+}
+
+async function start() {
+  loadTableClipboard();
+  loadRowClipboard();
+  hideUnwantedLabels();
+  try {
+    const session = await loadSession();
+    if (!session.user) {
+      showLoginScreen();
+      return;
+    }
+    await enterApp();
+  } catch (error) {
+    if (els.app) els.app.classList.remove("hidden");
+    els.listView.innerHTML = startErrorHtml(error);
+    setSaveStatus(error.message);
+  }
+}
+
+start();
