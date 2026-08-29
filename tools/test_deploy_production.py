@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -33,6 +34,8 @@ class DeployProductionTest(unittest.TestCase):
         (self.app / "static").mkdir(parents=True)
         (self.app / "data").mkdir(parents=True)
 
+        (self.stage / "tools").mkdir(parents=True)
+        shutil.copy2(ROOT / "tools" / "production_students_safety.py", self.stage / "tools" / "production_students_safety.py")
         (self.stage / "journal.py").write_text(
             "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\n",
             encoding="utf-8",
@@ -91,9 +94,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=students-fix1", text)
+        self.assertIn("styles.css?v=students-fix2", text)
         self.assertIn("mobile.css?v=row-copy1", text)
-        self.assertIn("app.js?v=students-fix1", text)
+        self.assertIn("app.js?v=students-fix2", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
@@ -113,6 +116,8 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("PORT = 8765", text)
         self.assertIn("journal.end_from_payload(locals().get('payload'), start, slots, student.get('schedule'))", text)
         self.assertNotIn("journal.end_from_payload(payload,", text)
+        self.assertIn("journal-students-safety-begin", text)
+        self.assertIn("production_students_safety", text)
         self.assertNotIn("journal.apply_schedule(student, start, slots, template)\n", text)
 
     def test_patch_server_rewrites_unsafe_payload_and_students_list(self) -> None:
@@ -134,6 +139,17 @@ class DeployProductionTest(unittest.TestCase):
         self.assertNotIn("end_from_payload(payload,", text)
         self.assertIn("journal.public_students_payload(data.get('students'))", text)
         self.assertIn('json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8", "replace")', text)
+        self.assertIn("journal-students-safety-begin", text)
+
+    def test_patch_server_always_installs_students_handler(self) -> None:
+        deploy = load_deploy()
+        path = self.app / "server.py"
+        path.write_text("PORT = 8765\n", encoding="utf-8")
+        deploy.patch_server(path)
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("PORT = 8765", text)
+        self.assertIn("journal-students-safety-begin", text)
+        self.assertIn("production_students_safety", text)
 
     def test_installs_files_without_replacing_server_py(self) -> None:
         result = subprocess.run(
@@ -147,9 +163,12 @@ class DeployProductionTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("ГОТОВО. ВСЕ ИЗМЕНЕНИЯ УСТАНОВЛЕНЫ.", result.stdout)
         self.assertIn("VALUE = 'stage-journal'", (self.app / "journal.py").read_text(encoding="utf-8"))
-        self.assertEqual((self.app / "server.py").read_text(encoding="utf-8"), "PORT = 8765\n")
+        server_text = (self.app / "server.py").read_text(encoding="utf-8")
+        self.assertIn("PORT = 8765", server_text)
+        self.assertIn("journal-students-safety-begin", server_text)
+        self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("students-fix1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("students-fix2", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 
@@ -174,6 +193,82 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("*.py text eol=lf", text)
         self.assertNotIn(b"\r", DEPLOY_PY.read_bytes())
         self.assertNotIn(b"\r", (ROOT / "tools" / "deploy-production.sh").read_bytes())
+
+
+class ProductionStudentsSafetyTest(unittest.TestCase):
+    def test_crashing_handler_still_returns_students_json(self) -> None:
+        import importlib.util
+        import io
+        import json
+        import threading
+
+        spec = importlib.util.spec_from_file_location(
+            "production_students_safety",
+            ROOT / "tools" / "production_students_safety.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        class Handler:
+            def __init__(self) -> None:
+                self.path = "/api/students"
+                self.wfile = io.BytesIO()
+                self.status = 0
+
+            def do_GET(self) -> None:
+                raise RuntimeError("old handler boom")
+
+            def _user(self):
+                return {"role": "teacher"}
+
+            def _send_json(self, payload, status=200, cookie=None) -> None:
+                raise RuntimeError("should not use old send")
+
+            def send_response(self, status) -> None:
+                self.status = status
+
+            def send_header(self, key, value) -> None:
+                return None
+
+            def end_headers(self) -> None:
+                return None
+
+        journal_mod = type("Journal", (), {})()
+        journal_mod.public_students_payload = staticmethod(
+            lambda students: {"students": [{"id": "1", "name": "рома", "rows": []}]}
+        )
+        installed = module.install(
+            {
+                "Handler": Handler,
+                "load_data": lambda: {"students": [{"id": "1", "name": "рома"}]},
+                "journal": journal_mod,
+                "DATA_LOCK": threading.Lock(),
+            }
+        )
+        self.assertTrue(installed)
+
+        request = Handler()
+        Handler.do_GET(request)
+        self.assertEqual(request.status, 200)
+        body = json.loads(request.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(body["students"][0]["name"], "рома")
+
+        other = Handler()
+        other.path = "/api/session"
+        with self.assertRaises(RuntimeError):
+            Handler.do_GET(other)
+
+    def test_safety_block_is_idempotent(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        path = Path(self._temp.name) / "server.py"
+        path.write_text("PORT = 8765\n", encoding="utf-8")
+        deploy = load_deploy()
+        deploy.patch_server(path)
+        deploy.patch_server(path)
+        text = path.read_text(encoding="utf-8")
+        self.assertEqual(text.count("journal-students-safety-begin"), 1)
+        self._temp.cleanup()
 
 
 if __name__ == "__main__":

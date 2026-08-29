@@ -46,6 +46,7 @@ REQUIRED = (
     "static/practice-scales.js",
     "static/practice-scales.css",
     "static/practice-page.js",
+    "tools/production_students_safety.py",
 )
 
 APP_MARKERS = (
@@ -68,9 +69,9 @@ APP_MARKERS = (
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=students-fix1",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=students-fix2",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=row-copy1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=students-fix1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=students-fix2",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
@@ -90,6 +91,50 @@ def curl_code(url: str, timeout: int = 8) -> str:
         check=False,
     )
     return (result.stdout or "000").strip() or "000"
+
+
+def diagnose_students() -> None:
+    result = subprocess.run(
+        [
+            "curl",
+            "-sS",
+            "--max-time",
+            "20",
+            "-D",
+            "-",
+            "-o",
+            "/tmp/journal-students-body.txt",
+            "-w",
+            "\nhttp_code=%{http_code}\n",
+            LOCAL_URL + "/api/students",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    print("students-curl:\n%s%s" % ((result.stdout or "")[:1500], (result.stderr or "")[:800]))
+    log = Path("/tmp/journal-students-error.log")
+    if log.is_file():
+        print("students-error.log:\n%s" % log.read_text(encoding="utf-8", errors="replace")[:2500])
+    journalctl = subprocess.run(
+        ["journalctl", "-u", "journal", "-n", "50", "--no-pager"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    print("journalctl:\n%s" % ((journalctl.stdout or journalctl.stderr or "")[:2500]))
+
+
+def wait_for_students() -> str:
+    last = "000"
+    for attempt in range(8):
+        last = curl_code(LOCAL_URL + "/api/students", timeout=20)
+        print("api try %s: %s" % (attempt + 1, last))
+        if last in ("200", "401"):
+            return last
+        time.sleep(2)
+    diagnose_students()
+    return last
 
 
 def curl_body(url: str, timeout: int = 8) -> str:
@@ -133,12 +178,34 @@ JSON_DUMPS_RE = re.compile(
 SAFE_JSON_DUMPS = 'json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8", "replace")'
 
 
+SAFETY_BEGIN = "# journal-students-safety-begin"
+SAFETY_END = "# journal-students-safety-end"
+SAFETY_INSTALL = """
+
+%s
+try:
+    import production_students_safety as _journal_students_safety
+    _journal_students_safety.install(globals())
+except Exception:
+    pass
+%s
+""" % (SAFETY_BEGIN, SAFETY_END)
+
+
+def strip_server_safety(text: str) -> str:
+    return re.sub(
+        r"\n*" + re.escape(SAFETY_BEGIN) + r".*?" + re.escape(SAFETY_END) + r"\n?",
+        "\n",
+        text,
+        flags=re.S,
+    )
+
+
 def patch_server(path: Path) -> None:
-    """Keep production server.py, but make student list and schedule updates safe."""
+    """Keep production server.py, but take over GET /api/students safely."""
     if not path.is_file():
         return
-    text = path.read_text(encoding="utf-8")
-    original = text
+    text = strip_server_safety(path.read_text(encoding="utf-8"))
     text = text.replace(UNSAFE_END_FROM_PAYLOAD, SAFE_END_FROM_PAYLOAD)
     text = text.replace(
         'journal.end_from_payload(payload, start, slots, student.get("schedule"))',
@@ -147,8 +214,7 @@ def patch_server(path: Path) -> None:
     text, _count = APPLY_SCHEDULE_RE.subn(APPLY_SCHEDULE_WITH_END, text)
     text, _students = STUDENTS_LIST_RE.subn("journal.public_students_payload(data.get('students'))", text)
     text, _dumps = JSON_DUMPS_RE.subn(SAFE_JSON_DUMPS, text)
-    if text == original:
-        return
+    text = text.rstrip() + SAFETY_INSTALL
     path.write_text(text, encoding="utf-8")
     py_compile.compile(str(path), doraise=True)
 
@@ -209,6 +275,7 @@ def require_python_and_markers() -> None:
     try:
         py_compile.compile(str(STAGE / "journal.py"), doraise=True)
         py_compile.compile(str(STAGE / "pdf_import.py"), doraise=True)
+        py_compile.compile(str(STAGE / "tools" / "production_students_safety.py"), doraise=True)
     except py_compile.PyCompileError:
         fail("ОШИБКА: проверка Python не прошла. Сайт не изменён.")
     app_js = (STAGE / "static" / "app.js").read_text(encoding="utf-8", errors="replace")
@@ -252,6 +319,10 @@ def install_stage() -> None:
         install_file(STAGE / "static" / "practice-scales.js", STATIC_ROOT / "practice-scales.js")
         install_file(STAGE / "static" / "practice-scales.css", STATIC_ROOT / "practice-scales.css")
         install_file(STAGE / "static" / "practice-page.js", STATIC_ROOT / "practice-page.js")
+        install_file(
+            STAGE / "tools" / "production_students_safety.py",
+            APP_ROOT / "production_students_safety.py",
+        )
         patch_index(STATIC_ROOT / "index.html")
         patch_server(APP_ROOT / "server.py")
     except Exception:
@@ -263,7 +334,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "students-fix1" in installed_index else "0"
+    index_marker = "1" if "students-fix2" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -275,8 +346,8 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("students-fix1"))
-        api_code = curl_code(LOCAL_URL + "/api/students")
+        index_marker = str(live_index.count("students-fix2"))
+        api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)
 
@@ -288,11 +359,8 @@ def verify_live() -> tuple[str, str, str]:
         rollback_code = "skip" if SKIP_HEALTHCHECK else curl_code(LOCAL_URL + "/")
         fail("ОТКАТ ЗАВЕРШЁН. python8765:%s" % rollback_code)
     if not SKIP_HEALTHCHECK and api_code not in ("200", "401"):
-        print("ПРОВЕРКА НЕ ПРОШЛА: /api/students=%s. ВОССТАНАВЛИВАЮ ПРЕЖНЮЮ ВЕРСИЮ." % api_code)
-        restore_files()
-        restart_on_8765()
-        rollback_code = curl_code(LOCAL_URL + "/")
-        fail("ОТКАТ ЗАВЕРШЁН. python8765:%s api:%s" % (rollback_code, api_code))
+        print("ПРОВЕРКА НЕ ПРОШЛА: /api/students=%s. Новую версию оставляю, откат списка не чинит." % api_code)
+        fail("ОСТАВЛЕНО БЕЗ ОТКАТА. python8765:%s api:%s" % (local_code, api_code))
 
     if SKIP_HEALTHCHECK:
         python_8766 = "000"
