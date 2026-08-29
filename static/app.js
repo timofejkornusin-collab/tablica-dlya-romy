@@ -1219,38 +1219,32 @@ function bankPickerHtml(rowIndex, selected) {
       <span class="bank-picker-name">${escapeHtml(currentLabel)}</span>
       <span class="bank-picker-caret" aria-hidden="true">▾</span>
     </button>
-    <div class="bank-picker-menu" popover="manual" data-row="${rowIndex}" role="listbox">${none}${rows}</div>
+    <div class="bank-picker-menu" data-row="${rowIndex}" role="listbox"><div class="bank-picker-list">${none}${rows}</div></div>
   </div>`;
 }
 
 function isBankMenuOpen(menu) {
-  if (!menu) return false;
-  try {
-    if (menu.matches(":popover-open")) return true;
-  } catch (_error) {
-    /* старый браузер без popover */
-  }
-  return menu.classList.contains("is-open");
+  return Boolean(menu && (menu.closest(".bank-picker-layer") || menu.classList.contains("is-open")));
 }
 
 function closeBankPickers() {
   document.querySelectorAll(".bank-picker-menu").forEach((menu) => {
-    if (typeof menu.hidePopover === "function") {
-      try {
-        menu.hidePopover();
-      } catch (_error) {
-        /* меню уже закрыто */
-      }
-    }
     menu.classList.remove("is-open");
     const picker = document.querySelector(`.bank-picker[data-row="${menu.dataset.row}"]`);
     if (picker && menu.parentElement !== picker) picker.appendChild(menu);
-    menu.style.left = "";
-    menu.style.top = "";
-    menu.style.width = "";
-    menu.style.margin = "";
-    menu.style.inset = "";
+    ["left", "top", "width", "height", "maxHeight", "margin", "inset", "right", "bottom", "overflow", "overflowY", "overflowX", "backgroundColor", "position"].forEach(
+      (key) => {
+        menu.style[key] = "";
+      }
+    );
+    const list = menu.querySelector(".bank-picker-list");
+    if (list) {
+      list.style.maxHeight = "";
+      list.style.overflowY = "";
+      list.style.backgroundColor = "";
+    }
   });
+  document.querySelectorAll(".bank-picker-layer").forEach((layer) => layer.remove());
   document.querySelectorAll(".bank-picker-toggle").forEach((button) => button.setAttribute("aria-expanded", "false"));
 }
 
@@ -1261,17 +1255,36 @@ function positionBankMenu(menu, anchor) {
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(Math.max(rect.width, 280), Math.max(160, window.innerWidth - 16));
   const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
-  menu.style.margin = "0";
-  menu.style.inset = "unset";
+  const list = menu.querySelector(".bank-picker-list") || menu;
   menu.style.position = "fixed";
+  menu.style.margin = "0";
+  menu.style.inset = "auto";
+  menu.style.right = "auto";
+  menu.style.bottom = "auto";
   menu.style.left = `${left}px`;
   menu.style.width = `${width}px`;
-  const height = Math.min(280, menu.scrollHeight || 280);
+  menu.style.height = "auto";
+  menu.style.maxHeight = "none";
+  menu.style.overflow = "hidden";
+  menu.style.backgroundColor = "#ffffff";
+  list.style.height = "auto";
+  list.style.maxHeight = "none";
+  list.style.overflow = "visible";
+  const maxH = Math.min(360, Math.max(120, window.innerHeight - 24));
+  const needed = Math.max(list.scrollHeight, menu.scrollHeight, 48);
+  const height = Math.min(needed, maxH);
+  menu.style.height = `${height}px`;
+  menu.style.maxHeight = `${height}px`;
+  list.style.height = "100%";
+  list.style.maxHeight = "100%";
+  list.style.overflowX = "hidden";
+  list.style.overflowY = needed > maxH ? "auto" : "hidden";
+  list.style.backgroundColor = "#ffffff";
   const spaceBelow = window.innerHeight - rect.bottom;
   if (spaceBelow < height + 8 && rect.top > spaceBelow) {
     menu.style.top = `${Math.max(8, rect.top - height - 4)}px`;
   } else {
-    menu.style.top = `${Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 48))}px`;
+    menu.style.top = `${Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - height - 8))}px`;
   }
 }
 
@@ -1288,19 +1301,11 @@ function openBankPicker(picker, anchor) {
   if (already) return;
   menu.dataset.row = row;
   toggle.setAttribute("aria-expanded", "true");
-  let shownAsPopover = false;
-  if (typeof menu.showPopover === "function") {
-    try {
-      menu.showPopover();
-      shownAsPopover = true;
-    } catch (_error) {
-      shownAsPopover = false;
-    }
-  }
+  const layer = document.createElement("div");
+  layer.className = "bank-picker-layer";
+  document.body.appendChild(layer);
+  layer.appendChild(menu);
   menu.classList.add("is-open");
-  if (!shownAsPopover) {
-    document.body.appendChild(menu);
-  }
   positionBankMenu(menu, pin);
   bankMenuIgnoreUntil = Date.now() + 400;
 }
@@ -1325,8 +1330,8 @@ async function deletePracticeBank(bankId) {
   if (!wanted.startsWith("pdf-") || bankDeleteBusy) return;
   const bank = (state.banks || []).find((item) => item.id === wanted);
   const title = (bank && (bank.title || bank.id)) || "этот набор";
-  closeBankPickers();
   if (!confirm(`Удалить «${title}» из практических заданий?`)) return;
+  closeBankPickers();
   bankDeleteBusy = true;
   setSaveStatus("Удаляю набор…");
   try {
@@ -2462,39 +2467,54 @@ if (els.logoutConfirm) {
   });
 }
 
-document.addEventListener("click", (event) => {
-  const bankDelete = event.target.closest(".bank-delete");
-  if (bankDelete) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!isTeacherUi()) return;
-    const bankId = bankDelete.dataset.bank;
-    deletePracticeBank(bankId).catch((error) => {
-      setSaveStatus(error.message);
-      alert(error.message);
-    });
-    return;
-  }
-  const bankChoice = event.target.closest(".bank-picker-choice");
-  if (bankChoice) {
-    event.preventDefault();
-    event.stopPropagation();
-    applyBankChoice(bankChoice);
-    return;
-  }
-  const pickerToggle = event.target.closest(".bank-picker-toggle, .practice-open-hint");
-  if (pickerToggle) {
-    if (!isTeacherUi()) return;
-    const row = pickerToggle.dataset.row;
-    const picker =
-      pickerToggle.closest(".bank-picker") || document.querySelector(`.bank-picker[data-row="${row}"]`);
-    if (picker) openBankPicker(picker, pickerToggle);
-    return;
-  }
-  if (event.target.closest(".bank-picker-menu")) return;
-  if (Date.now() < bankMenuIgnoreUntil) return;
-  closeBankPickers();
-});
+function clickElement(event) {
+  const target = event.target;
+  if (target && target.nodeType === 1) return target;
+  return target && target.parentElement ? target.parentElement : null;
+}
+
+document.addEventListener(
+  "click",
+  (event) => {
+    const target = clickElement(event);
+    if (!target || typeof target.closest !== "function") return;
+    const bankDelete = target.closest(".bank-delete");
+    if (bankDelete) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!isTeacherUi()) return;
+      const bankId = bankDelete.getAttribute("data-bank") || bankDelete.dataset.bank || "";
+      deletePracticeBank(bankId).catch((error) => {
+        setSaveStatus(error.message);
+        alert(error.message);
+      });
+      return;
+    }
+    const bankChoice = target.closest(".bank-picker-choice");
+    if (bankChoice) {
+      event.preventDefault();
+      event.stopPropagation();
+      applyBankChoice(bankChoice);
+      return;
+    }
+    const pickerToggle = target.closest(".bank-picker-toggle, .practice-open-hint");
+    if (pickerToggle) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!isTeacherUi()) return;
+      const row = pickerToggle.dataset.row;
+      const picker =
+        pickerToggle.closest(".bank-picker") || document.querySelector(`.bank-picker[data-row="${row}"]`);
+      if (picker) openBankPicker(picker, pickerToggle);
+      return;
+    }
+    if (target.closest(".bank-picker-menu")) return;
+    if (target.closest(".bank-picker-layer") || Date.now() >= bankMenuIgnoreUntil) {
+      closeBankPickers();
+    }
+  },
+  true
+);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeBankPickers();
 });

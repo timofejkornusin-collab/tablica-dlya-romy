@@ -1003,36 +1003,51 @@ textarea:focus {
   max-width: none;
 }
 
+.bank-picker-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: transparent;
+}
+
 .bank-picker-menu {
   position: fixed;
-  z-index: 4000;
+  z-index: 4001;
   box-sizing: border-box;
-  max-height: 280px;
-  overflow: auto;
-  background: #fff;
+  overflow: hidden;
+  background: #ffffff;
+  background-clip: padding-box;
+  color: var(--navy);
+  opacity: 1;
+  isolation: isolate;
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: var(--shadow-lg);
-  padding: 6px;
   margin: 0;
-  inset: unset;
+  inset: auto;
 }
 
-.bank-picker-menu:not(:popover-open):not(.is-open) {
+.bank-picker-menu:not(.is-open) {
   display: none;
 }
 
-.bank-picker-menu:popover-open,
 .bank-picker-menu.is-open {
   display: block;
-  position: fixed;
-  margin: 0;
-  inset: unset;
+  background: #ffffff;
 }
 
-.bank-picker-menu > .bank-picker-choice {
+.bank-picker-list {
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #ffffff;
+  padding: 6px;
+}
+
+.bank-picker-list > .bank-picker-choice {
   width: 100%;
   margin-bottom: 2px;
+  background: #ffffff;
 }
 
 .bank-picker-row {
@@ -1040,6 +1055,7 @@ textarea:focus {
   align-items: center;
   gap: 6px;
   min-width: 0;
+  background: #ffffff;
 }
 
 .bank-picker-row.is-selected .bank-picker-choice {
@@ -1052,7 +1068,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   text-align: left;
-  background: transparent;
+  background: #ffffff;
   border: 0;
   border-radius: 8px;
   color: var(--navy);
@@ -1077,13 +1093,15 @@ textarea:focus {
 }
 
 .bank-delete {
+  position: relative;
+  z-index: 2;
   flex: 0 0 32px;
   flex-shrink: 0;
   width: 32px;
   height: 32px;
   margin-left: 0;
   border: 0;
-  background: transparent;
+  background: #ffffff;
   color: var(--danger);
   font: inherit;
   font-size: 1.25rem;
@@ -1091,6 +1109,7 @@ textarea:focus {
   line-height: 1;
   border-radius: 8px;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .practice-link {
