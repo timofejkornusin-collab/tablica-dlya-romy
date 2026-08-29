@@ -215,6 +215,87 @@ class ScheduleEndDateTest(unittest.TestCase):
         self.assertNotIn("даты встанут до мая", index_html)
 
 
+class ExtraLessonTest(unittest.TestCase):
+    def test_extra_row_does_not_shift_schedule_dates(self) -> None:
+        first = journal.empty_row("03.09.2026, 16:00")
+        first["topic"] = "Тема 1"
+        extra = journal.empty_row("")
+        extra["extraLesson"] = True
+        extra["topic"] = "Доп"
+        second = journal.empty_row("10.09.2026, 16:00")
+        second["topic"] = "Тема 2"
+        student = {"rows": [first, extra, second]}
+
+        journal.apply_schedule(
+            student,
+            date(2026, 9, 3),
+            [{"weekday": 3, "time": "16:00"}],
+            "once",
+        )
+
+        self.assertEqual(student["rows"][0]["date"], "03.09.2026, 16:00")
+        self.assertEqual(student["rows"][0]["topic"], "Тема 1")
+        self.assertTrue(journal.is_extra_lesson(student["rows"][1]))
+        self.assertEqual(student["rows"][1]["topic"], "Доп")
+        self.assertEqual(student["rows"][1]["date"], "")
+        self.assertEqual(student["rows"][2]["date"], "10.09.2026, 16:00")
+        self.assertEqual(student["rows"][2]["topic"], "Тема 2")
+
+    def test_schedule_date_change_keeps_extra_row_and_topics(self) -> None:
+        first = journal.empty_row("03.09.2026, 16:00")
+        first["topic"] = "Тема 1"
+        extra = journal.empty_row("05.09.2026, 18:00")
+        extra["extraLesson"] = True
+        extra["topic"] = "Суббота"
+        second = journal.empty_row("10.09.2026, 16:00")
+        second["topic"] = "Тема 2"
+        student = {"rows": [first, extra, second]}
+
+        journal.apply_schedule(
+            student,
+            date(2026, 10, 1),
+            [{"weekday": 3, "time": "17:00"}],
+            "once",
+        )
+
+        extras = [row for row in student["rows"] if journal.is_extra_lesson(row)]
+        self.assertEqual(len(extras), 1)
+        self.assertEqual(extras[0]["date"], "05.09.2026, 18:00")
+        self.assertEqual(extras[0]["topic"], "Суббота")
+        thursday = [row for row in student["rows"] if not journal.is_extra_lesson(row)]
+        self.assertEqual(thursday[0]["date"], "01.10.2026, 17:00")
+        self.assertEqual(thursday[0]["topic"], "Тема 1")
+        self.assertEqual(thursday[1]["date"], "08.10.2026, 17:00")
+        self.assertEqual(thursday[1]["topic"], "Тема 2")
+
+    def test_extra_row_survives_end_date_trim_and_clean_rows(self) -> None:
+        extra = journal.empty_row("20.09.2026, 16:00")
+        extra["extraLesson"] = True
+        extra["topic"] = "Доп"
+        rows = [
+            journal.empty_row("03.09.2026, 16:00"),
+            extra,
+            journal.empty_row("17.09.2026, 16:00"),
+        ]
+        trimmed = journal.rows_until_end(rows, date(2026, 9, 10))
+        self.assertEqual(
+            [row["date"] for row in trimmed],
+            ["03.09.2026, 16:00", "20.09.2026, 16:00"],
+        )
+        cleaned = journal.clean_rows(rows)
+        self.assertTrue(cleaned[1]["extraLesson"])
+        self.assertEqual(journal.public_student({"id": "x", "name": "Т", "rows": cleaned})["rows"][1]["extraLesson"], True)
+
+    def test_app_inserts_extra_row_without_dom_resync(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function extraLessonRow()", app_js)
+        self.assertIn("skipTableDomSync = true", app_js)
+        self.assertIn("student.rows.splice(at, 0, extraLessonRow())", app_js)
+        self.assertIn("if (!skipTableDomSync) syncTableRowsFromDom(student)", app_js)
+        self.assertIn("дату ставит педагог", app_js)
+        self.assertIn("extra-lesson", (ROOT / "static" / "styles.css").read_text(encoding="utf-8"))
+
+
 class TableCopyTest(unittest.TestCase):
     def test_copy_replaces_table_but_preserves_identity_and_answers(self) -> None:
         source_row = journal.empty_row("03.09.2026, 18:00")

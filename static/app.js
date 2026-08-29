@@ -257,8 +257,10 @@ function copyableRowSnapshot(row) {
 
 function applyCopiedRow(target, source) {
   const keptDate = String((target && target.date) || "");
+  const keptExtra = Boolean(target && target.extraLesson);
   const next = copyableRowSnapshot(source);
   next.date = keptDate;
+  next.extraLesson = keptExtra;
   if (!target || typeof target !== "object") return next;
   Object.keys(target).forEach((key) => {
     delete target[key];
@@ -285,6 +287,7 @@ function emptyRow() {
     practiceFileId: "",
     practiceFileName: "",
     importedSource: "",
+    extraLesson: false,
   };
 }
 
@@ -417,12 +420,21 @@ function showRowConfirm(rowIndex) {
   if (els.rowConfirmNo) els.rowConfirmNo.focus();
 }
 
+function extraLessonRow() {
+  const row = emptyRow();
+  row.extraLesson = true;
+  return row;
+}
+
 function insertLessonAt(index) {
   const student = currentStudent();
   if (!student || !isTeacherUi()) return;
   hideRowConfirm();
+  if (!Array.isArray(student.rows)) student.rows = [];
   const at = Math.max(0, Math.min(Number(index) || 0, student.rows.length));
-  student.rows.splice(at, 0, emptyRow());
+  bumpSaveEpoch(student.id);
+  skipTableDomSync = true;
+  student.rows.splice(at, 0, extraLessonRow());
   scheduleSave();
   renderTable();
   const dateArea = els.tableView.querySelector(`textarea[data-row='${at}'][data-key='date']`);
@@ -449,10 +461,13 @@ async function deleteLessonAt(index) {
   }
   const fresh = currentStudent();
   if (!fresh) return;
+  bumpSaveEpoch(fresh.id);
+  skipTableDomSync = true;
   fresh.rows.splice(index, 1);
   if (!fresh.rows.length) fresh.rows.push(emptyRow());
   setSaveStatus("Строка удалена");
   await persistCurrent();
+  skipTableDomSync = true;
   renderTable();
 }
 
@@ -777,7 +792,7 @@ function syncStartDateWeekday() {
 async function persistCurrent() {
   const student = currentStudent();
   if (!student || !isTeacherUi()) return saveChain;
-  syncTableRowsFromDom(student);
+  if (!skipTableDomSync) syncTableRowsFromDom(student);
   const id = student.id;
   const epoch = saveEpochByStudent[id] || 0;
   const payload = {
@@ -1198,6 +1213,7 @@ function trimRowsToScheduleEnd(student) {
   const endIso = toDateInputValue(student.schedule && student.schedule.endDate);
   if (!endIso) return;
   student.rows = student.rows.filter((row) => {
+    if (row && row.extraLesson) return true;
     const iso = dmyToIso(String((row && row.date) || "").split(",")[0]);
     return !iso || iso <= endIso;
   });
@@ -1239,7 +1255,7 @@ function renderTable() {
   els.pageTitle.textContent = student.name;
   els.pageSubtitle.textContent = isStudentView()
     ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
-    : "Между уроками нажмите «+». «Найти» открывает строку по дате.";
+    : "Между уроками нажмите «+»: появится отдельный урок, дату ставит педагог, остальные даты не сдвигаются. «Найти» открывает строку по дате.";
   updateModeChrome();
   updateShareBar();
 
@@ -1259,7 +1275,7 @@ function renderTable() {
   const insertGap = (index) =>
     isTeacherUi()
       ? `<tr class="insert-gap"><td colspan="${colCount}">
-          <button class="insert-lesson" type="button" data-insert="${index}" title="Вставить урок между этими строками">+</button>
+          <button class="insert-lesson" type="button" data-insert="${index}" title="Добавить урок вне расписания. Дату ставит педагог, остальные строки не сдвигаются">+</button>
         </td></tr>`
       : "";
   const head = `${toolsHead}${COLUMNS.map((column) => `<th class="${column.className}">${column.label}</th>`).join("")}`;
@@ -1295,7 +1311,9 @@ function renderTable() {
             : "";
           return `<td class="col-date" data-label="${escapeHtml(column.label)}">
             <div class="date-cell">
-              <textarea class="cell-fill" data-row="${rowIndex}" data-key="date" rows="1" spellcheck="false" placeholder="например 10.09.2026, 17:00" ${readonly}>${escapeHtml(
+              <textarea class="cell-fill" data-row="${rowIndex}" data-key="date" rows="1" spellcheck="false" placeholder="${
+                row.extraLesson ? "дату ставит педагог, например 12.09.2026, 17:00" : "например 10.09.2026, 17:00"
+              }" ${readonly}>${escapeHtml(
                 String(row.date || "")
               )}</textarea>
               <div class="date-cell-bottom">
@@ -1353,6 +1371,7 @@ function renderTable() {
         : "";
       const classes = [];
       if (upcoming) classes.push("lesson-upcoming");
+      if (row.extraLesson) classes.push("extra-lesson");
       if (row.lessonStatus === "held") classes.push("lesson-held");
       if (row.lessonStatus === "missed") classes.push("lesson-missed");
       const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";

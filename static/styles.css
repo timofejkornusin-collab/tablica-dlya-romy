@@ -635,6 +635,10 @@ tbody tr.insert-gap {
   transform: scale(1.15);
 }
 
+tr.extra-lesson .col-date textarea {
+  box-shadow: inset 0 0 0 1px rgba(176, 74, 58, 0.28);
+}
+
 textarea.cell-fill {
   position: absolute;
   inset: 0;

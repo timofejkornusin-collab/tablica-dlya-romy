@@ -50,6 +50,7 @@ def empty_row(date_str: str = "") -> dict:
     row["lessonStatus"] = ""
     row["bankId"] = ""
     row["importedSource"] = ""
+    row["extraLesson"] = False
     for key in FILE_KEYS:
         row[key] = ""
     return row
@@ -176,8 +177,53 @@ def end_date_from_request_payload() -> date | None:
     return None
 
 
-def row_day(row: dict | None) -> date | None:
-    return parse_iso_date(row_date_key(row))
+def is_extra_lesson(row: dict | None) -> bool:
+    if not isinstance(row, dict):
+        return False
+    value = row.get("extraLesson")
+    if value is True:
+        return True
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def copy_extra_row(row: dict) -> dict:
+    copied = copy.deepcopy(row) if isinstance(row, dict) else empty_row()
+    copied["extraLesson"] = True
+    return copied
+
+
+def merge_extra_lessons(scheduled: list[dict], extras: list[dict], old_rows: list[dict]) -> list[dict]:
+    result = list(scheduled)
+    for extra in extras:
+        extra_day = row_day(extra)
+        if extra_day is not None:
+            insert_at = len(result)
+            for index, row in enumerate(result):
+                day = row_day(row)
+                if day is not None and day > extra_day:
+                    insert_at = index
+                    break
+            result.insert(insert_at, copy_extra_row(extra))
+            continue
+        old_index = next((index for index, row in enumerate(old_rows) if row is extra), -1)
+        prev_scheduled = None
+        for index in range(old_index - 1, -1, -1):
+            if not is_extra_lesson(old_rows[index]):
+                prev_scheduled = old_rows[index]
+                break
+        if prev_scheduled is None:
+            result.insert(0, copy_extra_row(extra))
+            continue
+        prev_key = row_date_key(prev_scheduled)
+        insert_at = 0
+        for index, row in enumerate(result):
+            if row_date_key(row) == prev_key and not is_extra_lesson(row):
+                insert_at = index + 1
+                while insert_at < len(result) and is_extra_lesson(result[insert_at]):
+                    insert_at += 1
+                break
+        result.insert(insert_at, copy_extra_row(extra))
+    return result
 
 
 def rows_until_end(rows, end: date | None) -> list:
@@ -188,7 +234,7 @@ def rows_until_end(rows, end: date | None) -> list:
         if not isinstance(row, dict):
             continue
         day = row_day(row)
-        if day is None or day <= end:
+        if is_extra_lesson(row) or day is None or day <= end:
             kept.append(row)
     return kept
 
@@ -260,6 +306,10 @@ def row_date_key(row: dict | None) -> str:
     return str(row.get("date") or "").split(",")[0].strip()
 
 
+def row_day(row: dict | None) -> date | None:
+    return parse_iso_date(row_date_key(row))
+
+
 def apply_schedule(
     student: dict,
     start: date,
@@ -272,8 +322,10 @@ def apply_schedule(
     resolved = end if end is not None else default_schedule_end(start, slots)
     dates = generate_lesson_dates(start, slots, resolved)
     old_rows = [row for row in student.get("rows") or [] if isinstance(row, dict)]
+    extras = [row for row in old_rows if is_extra_lesson(row)]
+    scheduled_old = [row for row in old_rows if not is_extra_lesson(row)]
     old_by_date = {}
-    for row in old_rows:
+    for row in scheduled_old:
         key = row_date_key(row)
         if key and key not in old_by_date:
             old_by_date[key] = row
@@ -281,8 +333,8 @@ def apply_schedule(
     for index, date_str in enumerate(dates):
         key = date_str.split(",")[0].strip()
         prev = old_by_date.get(key)
-        if prev is None and index < len(old_rows):
-            prev = old_rows[index]
+        if prev is None and index < len(scheduled_old):
+            prev = scheduled_old[index]
         if prev is None:
             prev = {}
         row = empty_row(date_str)
@@ -299,8 +351,9 @@ def apply_schedule(
             row[field] = str(prev.get(field) or "")
         if row["lessonStatus"] not in LESSON_STATUSES:
             row["lessonStatus"] = ""
+        row["extraLesson"] = False
         new_rows.append(row)
-    student["rows"] = new_rows
+    student["rows"] = merge_extra_lessons(new_rows, extras, old_rows)
     student["template"] = template
     student["schedule"] = {
         "startDate": start.isoformat(),
@@ -359,6 +412,8 @@ def clean_rows(
         if item["bankId"]:
             item["practice"] = ""
             item["progress"] = ""
+        extra_source = row if "extraLesson" in row else prev
+        item["extraLesson"] = is_extra_lesson(extra_source)
         cleaned.append(item)
     return rows_until_end(cleaned, end)
 
@@ -385,11 +440,13 @@ def copy_lesson_row(source: dict | None, target: dict | None) -> dict:
     if not isinstance(source, dict):
         source = empty_row()
     kept_date = str(target.get("date") or "")
+    kept_extra = is_extra_lesson(target)
     copied = empty_row(kept_date)
     for key in ROW_COPY_KEYS:
         copied[key] = str(source.get(key) or "")
     status = str(source.get("lessonStatus") or "")
     copied["lessonStatus"] = status if status in LESSON_STATUSES else ""
+    copied["extraLesson"] = kept_extra
     target.clear()
     target.update(copied)
     return target
@@ -577,6 +634,7 @@ def public_student(student: dict | None) -> dict | None:
             item["progress"] = f"{stats['percent']}%"
             item["progressPercent"] = stats["percent"]
             item["progressColor"] = progress_color(stats["percent"])
+        item["extraLesson"] = is_extra_lesson(row)
         rows.append(item)
     return {
         "id": student.get("id"),
