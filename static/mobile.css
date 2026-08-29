@@ -103,7 +103,7 @@
   }
 
   td textarea,
-  td input,
+  td input:not(.visually-hidden),
   .cell-fill,
   .material-cell,
   .material-cell textarea,
@@ -116,6 +116,19 @@
     min-width: 0 !important;
     height: auto !important;
     box-sizing: border-box !important;
+  }
+
+  td input.visually-hidden,
+  .visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    inset: auto !important;
+    border: 0 !important;
   }
 
   td.col-date textarea,
@@ -162,13 +175,79 @@
     height: 36px;
   }
 
-  .material-tools,
-  .file-corner {
+  .material-tools {
     position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+
+  .file-corner,
+  .practice-upload {
+    position: static !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 44px !important;
+    padding: 10px 14px !important;
+    overflow: visible !important;
+    align-self: stretch !important;
+    box-sizing: border-box !important;
+  }
+
+  .file-corner .attach-file-label,
+  .practice-upload .attach-file-label {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    clip: auto !important;
+    white-space: nowrap !important;
+  }
+
+  .attach-file-short {
+    display: none !important;
+  }
+
+  .practice-actions,
+  .bank-picker {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    gap: 8px !important;
+  }
+
+  .bank-picker-toggle,
+  .practice-open-hint,
+  .practice-link {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  .material-cell.student-material {
+    border: 0 !important;
+    background: transparent !important;
+    min-height: 0 !important;
+    padding: 0 !important;
   }
 
   tbody tr.insert-gap,
   .lesson-cards tbody tr.insert-gap {
+    overflow: visible !important;
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;

@@ -334,7 +334,25 @@ class StudentTableCellsTest(unittest.TestCase):
         self.assertIn(".teacher-table .lesson-held td.col-date", styles)
         self.assertIn(".teacher-table .lesson-missed td.col-date", styles)
         self.assertNotIn("\n.lesson-held td.col-date {", styles)
-        self.assertIn("student-cells1", (ROOT / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("phone-cards1", (ROOT / "static" / "index.html").read_text(encoding="utf-8"))
+
+
+class MobileAttachButtonTest(unittest.TestCase):
+    def test_phone_and_tablet_show_full_issue_file_button(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        mobile = (ROOT / "static" / "mobile.css").read_text(encoding="utf-8")
+        self.assertIn('class="attach-file-label">Выдать файл</span>', app_js)
+        self.assertIn("td input:not(.visually-hidden)", styles)
+        self.assertIn("td input:not(.visually-hidden)", mobile)
+        self.assertIn("td input.visually-hidden", mobile)
+        self.assertIn(".file-corner,\n  .practice-upload {\n    position: static;\n    display: inline-flex;\n    width: 100%;", styles)
+        self.assertIn("min-height: 44px", styles)
+        self.assertNotIn("width: 36px;\n    height: 36px;\n    background: var(--navy-soft);", styles)
+        self.assertIn(".material-cell.student-material {\n    border: 0;", styles)
+        self.assertIn(".practice-actions,\n  .bank-picker {", styles)
+        self.assertIn(".file-corner .attach-file-label", mobile)
+        self.assertIn("overflow: visible !important;", mobile)
 
 
 class StudentsApiSafetyTest(unittest.TestCase):

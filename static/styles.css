@@ -492,7 +492,7 @@ td.progress-cell {
   min-width: 96px;
 }
 
-td input,
+td input:not(.visually-hidden),
 td textarea {
   display: block;
   width: 100%;
@@ -881,6 +881,22 @@ textarea:focus {
   line-height: 1;
 }
 
+.attach-file-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.attach-file-short {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
 .file-open {
   color: var(--navy);
   font-weight: 600;
@@ -1019,6 +1035,8 @@ textarea:focus {
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .practice-open-hint {
@@ -1996,6 +2014,13 @@ textarea[readonly] {
     min-width: 0;
   }
 
+  .material-cell.student-material {
+    border: 0;
+    background: transparent;
+    min-height: 0;
+    padding: 0;
+  }
+
   .material-cell textarea.cell-fill {
     padding-right: 10px;
     padding-bottom: 8px;
@@ -2010,13 +2035,54 @@ textarea[readonly] {
     width: 100%;
   }
 
-  .file-corner {
+  .file-chip,
+  .file-chip .file-open {
+    max-width: 100%;
+  }
+
+  .file-corner,
+  .practice-upload {
     position: static;
-    width: 36px;
-    height: 36px;
+    display: inline-flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 44px;
+    padding: 10px 14px;
+    gap: 8px;
+    overflow: visible;
+    align-self: stretch;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
     background: var(--navy-soft);
     color: var(--navy);
-    align-self: flex-start;
+    border-radius: 10px;
+    transform: none;
+  }
+
+  .file-corner:hover,
+  .practice-upload:hover {
+    transform: none;
+  }
+
+  .file-corner .attach-file-label,
+  .practice-upload .attach-file-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .attach-file-short {
+    display: none;
   }
 
   .practice-box,
@@ -2030,10 +2096,39 @@ textarea[readonly] {
 
   .practice-box {
     padding-right: 0;
+    width: 100%;
+    max-width: 100%;
   }
 
   .practice-box .file-corner {
     position: static;
+  }
+
+  .practice-actions,
+  .bank-picker {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .bank-picker-toggle,
+  .practice-open-hint,
+  .practice-link {
+    width: 100%;
+    max-width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  .practice-open-hint {
+    text-align: center;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--navy-soft);
+    text-decoration: none;
   }
 
   .practice-link,

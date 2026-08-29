@@ -1527,7 +1527,8 @@ function renderTable() {
           const attach = isTeacherUi()
             ? `<label class="practice-upload" title="Загрузить PDF с заданиями">
                 <span aria-hidden="true">+</span>
-                <span>PDF</span>
+                <span class="attach-file-short">PDF</span>
+                <span class="attach-file-label">Выдать файл</span>
                 <input type="file" class="visually-hidden" accept="application/pdf,.pdf" data-row="${rowIndex}" data-field="practice" />
               </label>`
             : "";
@@ -1949,6 +1950,7 @@ function renderMaterialCell(row, rowIndex, column) {
   const attachTitle = field === "theory" && theoryFiles.length ? "Прикрепить ещё документ" : "Прикрепить документ";
   const attach = `<label class="file-corner" title="${attachTitle}">
       <span class="file-corner-mark" aria-hidden="true">+</span>
+      <span class="attach-file-label">Выдать файл</span>
       <input type="file" class="visually-hidden" data-row="${rowIndex}" data-field="${field}" ${multiple} />
     </label>`;
   const remove =
