@@ -46,6 +46,9 @@ REQUIRED = (
     "static/practice-scales.js",
     "static/practice-scales.css",
     "static/practice-page.js",
+    "static/find-date.js",
+    "static/practice-lock.js",
+    "static/practice-reveal.js",
     "tools/production_students_safety.py",
 )
 
@@ -90,6 +93,9 @@ CACHE_BUSTERS = {
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
+    r'find-date\.js(?:\?v=[^"]*)?': "find-date.js?v=row-found2",
+    r'practice-lock\.js(?:\?v=[^"]*)?': "practice-lock.js?v=2",
+    r'practice-reveal\.js(?:\?v=[^"]*)?': "practice-reveal.js?v=2",
 }
 
 
@@ -390,6 +396,9 @@ def backup_current() -> None:
     copy_if_exists(STATIC_ROOT / "practice-scales.js", BACKUP / "static" / "practice-scales.js")
     copy_if_exists(STATIC_ROOT / "practice-scales.css", BACKUP / "static" / "practice-scales.css")
     copy_if_exists(STATIC_ROOT / "practice-page.js", BACKUP / "static" / "practice-page.js")
+    copy_if_exists(STATIC_ROOT / "find-date.js", BACKUP / "static" / "find-date.js")
+    copy_if_exists(STATIC_ROOT / "practice-lock.js", BACKUP / "static" / "practice-lock.js")
+    copy_if_exists(STATIC_ROOT / "practice-reveal.js", BACKUP / "static" / "practice-reveal.js")
     copy_if_exists(APP_ROOT / "data" / "students.json", BACKUP / "data" / "students.json")
 
 
@@ -403,6 +412,9 @@ def install_stage() -> None:
         install_file(STAGE / "static" / "practice-scales.js", STATIC_ROOT / "practice-scales.js")
         install_file(STAGE / "static" / "practice-scales.css", STATIC_ROOT / "practice-scales.css")
         install_file(STAGE / "static" / "practice-page.js", STATIC_ROOT / "practice-page.js")
+        install_file(STAGE / "static" / "find-date.js", STATIC_ROOT / "find-date.js")
+        install_file(STAGE / "static" / "practice-lock.js", STATIC_ROOT / "practice-lock.js")
+        install_file(STAGE / "static" / "practice-reveal.js", STATIC_ROOT / "practice-reveal.js")
         install_file(
             STAGE / "tools" / "production_students_safety.py",
             APP_ROOT / "production_students_safety.py",
