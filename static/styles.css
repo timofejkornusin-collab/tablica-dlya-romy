@@ -924,10 +924,80 @@ textarea:focus {
   padding-right: 28px;
 }
 
-.practice-box select {
+.practice-box select,
+.bank-picker-toggle {
   width: 100%;
   font-size: 0.88rem;
   padding: 6px 8px;
+}
+
+.bank-picker {
+  position: relative;
+  width: 100%;
+}
+
+.bank-picker-toggle {
+  display: block;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--navy);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bank-picker-menu {
+  position: fixed;
+  z-index: 80;
+  max-height: 280px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+}
+
+.bank-picker-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.bank-picker-row.is-selected .bank-picker-choice {
+  background: var(--navy-soft);
+}
+
+.bank-picker-choice {
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--navy);
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.bank-picker-choice:hover,
+.bank-delete:hover {
+  background: var(--terracotta-soft);
+}
+
+.bank-delete {
+  flex: 0 0 34px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 8px;
+  cursor: pointer;
 }
 
 .practice-link {

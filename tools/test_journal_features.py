@@ -632,13 +632,29 @@ class BankKeyTest(unittest.TestCase):
         self.assertEqual(saved["answer"], "ПРИВЕТ")
         self.assertEqual(journal.normalize_answer("привет", word=False), "привет")
 
-    def test_app_imports_theory_pdfs_and_saves_keys(self) -> None:
+    def test_app_does_not_import_theory_or_homework_pdfs_into_practice(self) -> None:
         app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         server_py = (ROOT / "server.py").read_text(encoding="utf-8")
         self.assertIn("importLinkedPdfs", app_js)
-        self.assertIn("firstPdfUrl(row.theory)", app_js)
-        self.assertIn("fromField", app_js)
-        self.assertIn('from_field in ("homework", "practice", "theory")', server_py)
+        self.assertIn("firstPdfUrl(row.practice)", app_js)
+        self.assertNotIn("firstPdfUrl(row.theory)", app_js)
+        self.assertNotIn("firstPdfUrl(row.homework)", app_js)
+        self.assertNotIn('fromField: "theory"', app_js)
+        self.assertNotIn('fromField: "homework"', app_js)
+        self.assertIn('fromField: "practice"', app_js)
+        self.assertIn('from_field == "practice"', server_py)
+        self.assertNotIn('from_field in ("homework", "practice", "theory")', server_py)
+        self.assertIn('field == "practice" and suffix == ".pdf"', server_py)
+        self.assertNotIn('field in ("practice", "theory", "homework") and suffix == ".pdf"', server_py)
+
+    def test_app_can_delete_imported_practice_banks(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("deletePracticeBank", app_js)
+        self.assertIn("bank-delete", app_js)
+        self.assertIn("/api/banks/delete", app_js)
+        self.assertIn("purge_bank", (ROOT / "journal.py").read_text(encoding="utf-8"))
+        self.assertIn(".bank-delete", styles)
 
 
 class CorrectProgressTest(unittest.TestCase):
@@ -685,6 +701,60 @@ class CorrectProgressTest(unittest.TestCase):
         self.assertEqual(public["rows"][0]["progress"], "40%")
         self.assertEqual(public["rows"][0]["progressPercent"], 40)
         self.assertEqual(public["rows"][0]["progressColor"], "yellow")
+
+
+class PurgeBankTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.banks_dir = Path(self.temp_dir.name)
+        (self.banks_dir / "ege-10.json").write_text(
+            json.dumps({"id": "ege-10", "title": "Задание 10 ЕГЭ", "tasks": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (self.banks_dir / "pdf-abc123def456.json").write_text(
+            json.dumps({"id": "pdf-abc123def456", "title": "Лишний PDF", "tasks": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.patch = patch.object(journal, "BANKS_DIR", self.banks_dir)
+        self.patch.start()
+
+    def tearDown(self) -> None:
+        self.patch.stop()
+        self.temp_dir.cleanup()
+
+    def test_purge_bank_removes_pdf_set_and_clears_student_links(self) -> None:
+        data = {
+            "students": [
+                {
+                    "id": "roma",
+                    "rows": [{"bankId": "pdf-abc123def456", "importedSource": "file:theory.pdf"}],
+                    "progress": {"pdf-abc123def456": {"1": "ответ"}, "ege-10": {"1": "1"}},
+                }
+            ]
+        }
+        err = journal.purge_bank(data, "pdf-abc123def456")
+        self.assertEqual(err, "")
+        self.assertFalse((self.banks_dir / "pdf-abc123def456.json").exists())
+        self.assertTrue((self.banks_dir / "ege-10.json").exists())
+        row = data["students"][0]["rows"][0]
+        self.assertEqual(row["bankId"], "")
+        self.assertEqual(row["importedSource"], "")
+        self.assertNotIn("pdf-abc123def456", data["students"][0]["progress"])
+        self.assertEqual(data["students"][0]["progress"]["ege-10"], {"1": "1"})
+
+    def test_purge_bank_keeps_builtin_ege_set(self) -> None:
+        data = {"students": [{"rows": [{"bankId": "ege-10"}]}]}
+        err = journal.purge_bank(data, "ege-10")
+        self.assertEqual(err, "Этот набор удалять нельзя")
+        self.assertTrue((self.banks_dir / "ege-10.json").exists())
+        self.assertEqual(data["students"][0]["rows"][0]["bankId"], "ege-10")
+
+    def test_purge_bank_clears_stale_pdf_id_even_if_file_is_gone(self) -> None:
+        data = {"students": [{"rows": [{"bankId": "pdf-missing0001", "importedSource": "manual:pdf-missing0001"}]}]}
+        err = journal.purge_bank(data, "pdf-missing0001")
+        self.assertEqual(err, "")
+        self.assertEqual(data["students"][0]["rows"][0]["bankId"], "")
+        self.assertEqual(data["students"][0]["rows"][0]["importedSource"], "")
 
 
 if __name__ == "__main__":

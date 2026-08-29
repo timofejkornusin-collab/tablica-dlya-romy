@@ -910,6 +910,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/file/delete":
             self._delete_material(user)
             return
+        if path == "/api/banks/delete":
+            self._delete_bank(user)
+            return
         self._drain_body()
         self.send_error(404)
 
@@ -1362,7 +1365,7 @@ class Handler(SimpleHTTPRequestHandler):
                     self._send_json({"ok": False, "error": str(exc)}, 400)
                     return
                 source_key = pdf_import.canonical_source_url(url)
-            elif from_field in ("homework", "practice", "theory"):
+            elif from_field == "practice":
                 with DATA_LOCK:
                     data = load_data()
                     student = find_student(data, student_id)
@@ -1464,16 +1467,13 @@ class Handler(SimpleHTTPRequestHandler):
         parsed_bank = None
         import_error = ""
         imported_total = 0
-        if field in ("practice", "theory", "homework") and suffix == ".pdf":
+        if field == "practice" and suffix == ".pdf":
             try:
                 parsed_bank = pdf_import.import_pdf_bytes(
                     uploaded["data"], original, journal.pdf_bank_id(uploaded["data"])
                 )
-                if field != "practice" and not (parsed_bank.get("tasks") or []):
-                    parsed_bank = None
             except Exception as exc:
-                if field == "practice":
-                    import_error = str(exc) or "Не получилось разобрать PDF."
+                import_error = str(exc) or "Не получилось разобрать PDF."
         with DATA_LOCK:
             data = load_data()
             student = find_student(data, student_id)
@@ -1492,7 +1492,7 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed_bank:
                 try:
                     journal.save_bank(parsed_bank)
-                    if field == "practice" or not str(rows[row_index].get("bankId") or ""):
+                    if field == "practice":
                         rows[row_index]["bankId"] = parsed_bank["id"]
                         rows[row_index]["importedSource"] = f"file:{stored}"
                     imported_total = len(parsed_bank.get("tasks") or [])
@@ -1544,6 +1544,24 @@ class Handler(SimpleHTTPRequestHandler):
                 (UPLOADS_DIR / old_id).unlink(missing_ok=True)
             saved = public_student(student)
         self._send_json({"ok": True, "student": saved})
+
+    def _delete_bank(self, user: dict) -> None:
+        if user["role"] != "teacher":
+            self._send_json({"ok": False, "error": "Набор удаляет учитель"}, 403)
+            return
+        payload = self._read_json()
+        if payload is None:
+            return
+        bank_id = str(payload.get("id") or "")
+        with DATA_LOCK:
+            data = load_data()
+            error = journal.purge_bank(data, bank_id)
+            if error:
+                self._send_json({"ok": False, "error": error}, 400)
+                return
+            save_data(data)
+            students = journal.public_students_payload(data.get("students")).get("students") or []
+        self._send_json({"ok": True, "banks": journal.list_banks(), "students": students})
 
 
 def ensure_lan_firewall(port: int) -> None:

@@ -505,6 +505,27 @@ def delete_bank(bank_id: str) -> None:
     path.unlink(missing_ok=True)
 
 
+def purge_bank(data: dict, bank_id: str) -> str:
+    safe = re.sub(r"[^a-z0-9\-]", "", str(bank_id or "").lower())
+    if not safe.startswith("pdf-"):
+        return "Этот набор удалять нельзя"
+    delete_bank(safe)
+    if not isinstance(data, dict):
+        return ""
+    for student in data.get("students") or []:
+        if not isinstance(student, dict):
+            continue
+        for row in student.get("rows") or []:
+            if isinstance(row, dict) and str(row.get("bankId") or "") == safe:
+                row["bankId"] = ""
+                row["importedSource"] = ""
+        progress = student.get("progress")
+        if isinstance(progress, dict):
+            progress.pop(safe, None)
+            progress.pop(str(bank_id or ""), None)
+    return ""
+
+
 def bank_used(data: dict, bank_id: str) -> bool:
     wanted = str(bank_id or "")
     if not wanted:

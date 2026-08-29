@@ -97,11 +97,57 @@ def _public_one(g: dict, student):
     return None
 
 
+def _locked_data(g: dict) -> dict:
+    lock = g.get("DATA_LOCK")
+    acquired = False
+    try:
+        if lock is not None and hasattr(lock, "acquire"):
+            try:
+                acquired = bool(lock.acquire(True, 3))
+            except TypeError:
+                lock.acquire()
+                acquired = True
+        return _load_data(g)
+    finally:
+        if acquired:
+            try:
+                lock.release()
+            except Exception:
+                pass
+
+
+def _save_data(g: dict, data: dict) -> None:
+    saver = g.get("save_data")
+    if callable(saver):
+        saver(data)
+
+
+def _request_json(handler):
+    reader = getattr(handler, "_read_json", None)
+    if callable(reader):
+        return reader()
+    length = 0
+    try:
+        length = int((getattr(handler, "headers", {}) or {}).get("Content-Length", "0") or "0")
+    except (TypeError, ValueError, AttributeError):
+        length = 0
+    raw = b""
+    rfile = getattr(handler, "rfile", None)
+    if length > 0 and rfile is not None:
+        raw = rfile.read(length)
+    try:
+        data = json.loads((raw or b"{}").decode("utf-8") or "{}")
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def install(g: dict) -> bool:
     handler_cls = _find_handler(g)
     if handler_cls is None:
         return False
     orig_get = handler_cls.do_GET
+    orig_post = getattr(handler_cls, "do_POST", None)
 
     def do_GET(self):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
@@ -112,22 +158,7 @@ def install(g: dict) -> bool:
             if not user:
                 _send_json(self, {"ok": False, "error": "Нужно войти"}, 401)
                 return
-            lock = g.get("DATA_LOCK")
-            acquired = False
-            try:
-                if lock is not None and hasattr(lock, "acquire"):
-                    try:
-                        acquired = bool(lock.acquire(True, 3))
-                    except TypeError:
-                        lock.acquire()
-                        acquired = True
-                data = _load_data(g)
-            finally:
-                if acquired:
-                    try:
-                        lock.release()
-                    except Exception:
-                        pass
+            data = _locked_data(g)
             if user.get("role") == "teacher":
                 _send_json(self, _students_payload(g, data))
                 return
@@ -141,5 +172,60 @@ def install(g: dict) -> bool:
             except Exception:
                 return
 
+    def do_POST(self):
+        path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        if path != "/api/banks/delete":
+            if orig_post:
+                return orig_post(self)
+            return None
+        try:
+            user = self._user() if hasattr(self, "_user") else None
+            if not user:
+                _send_json(self, {"ok": False, "error": "Нужно войти"}, 401)
+                return
+            if user.get("role") != "teacher":
+                _send_json(self, {"ok": False, "error": "Набор удаляет учитель"}, 403)
+                return
+            payload = _request_json(self)
+            if payload is None:
+                return
+            bank_id = str((payload or {}).get("id") or "")
+            journal = g.get("journal")
+            lock = g.get("DATA_LOCK")
+            acquired = False
+            try:
+                if lock is not None and hasattr(lock, "acquire"):
+                    try:
+                        acquired = bool(lock.acquire(True, 3))
+                    except TypeError:
+                        lock.acquire()
+                        acquired = True
+                data = _load_data(g)
+                error = ""
+                if journal is not None and hasattr(journal, "purge_bank"):
+                    error = journal.purge_bank(data, bank_id) or ""
+                else:
+                    error = "Не получилось удалить набор"
+                if error:
+                    _send_json(self, {"ok": False, "error": error}, 400)
+                    return
+                _save_data(g, data)
+                banks = journal.list_banks() if journal is not None and hasattr(journal, "list_banks") else []
+                students = _students_payload(g, data).get("students") or []
+            finally:
+                if acquired:
+                    try:
+                        lock.release()
+                    except Exception:
+                        pass
+            _send_json(self, {"ok": True, "banks": banks, "students": students})
+        except Exception as exc:
+            _write_error(exc)
+            try:
+                _send_json(self, {"ok": False, "error": "Не получилось удалить набор"}, 500)
+            except Exception:
+                return
+
     handler_cls.do_GET = do_GET
+    handler_cls.do_POST = do_POST
     return True

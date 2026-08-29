@@ -37,7 +37,7 @@ class DeployProductionTest(unittest.TestCase):
         (self.stage / "tools").mkdir(parents=True)
         shutil.copy2(ROOT / "tools" / "production_students_safety.py", self.stage / "tools" / "production_students_safety.py")
         (self.stage / "journal.py").write_text(
-            "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\ndef public_student_summary(student):\n    return student\n",
+            "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\ndef public_student_summary(student):\n    return student\ndef purge_bank(data, bank_id):\n    return ''\n",
             encoding="utf-8",
         )
         (self.stage / "pdf_import.py").write_text("VALUE = 'stage-pdf'\n", encoding="utf-8")
@@ -46,7 +46,7 @@ class DeployProductionTest(unittest.TestCase):
             "function restorePracticeScroll() {}\nconst keepScroll = true;\n"
             "function applyCopiedTable() {}\nfunction applyCopiedRow() {}\nfunction bumpSaveEpoch() {}\n"
             "function syncStartDateWeekday() {}\nconst keepRicher = true;\n"
-            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\n",
+            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "practice-page.js").write_text(
@@ -94,9 +94,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=quiet-ui1", text)
+        self.assertIn("styles.css?v=bank-del1", text)
         self.assertIn("mobile.css?v=row-copy1", text)
-        self.assertIn("app.js?v=file-note1", text)
+        self.assertIn("app.js?v=bank-del1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
@@ -141,6 +141,28 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn('json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8", "replace")', text)
         self.assertIn("journal-students-safety-begin", text)
 
+    def test_patch_server_stops_theory_and_homework_pdf_import(self) -> None:
+        deploy = load_deploy()
+        path = self.app / "server.py"
+        path.write_text(
+            "PORT = 8765\n"
+            'if field in ("practice", "theory", "homework") and suffix == ".pdf":\n'
+            "    parsed_bank = True\n"
+            'if field == "practice" or not str(rows[row_index].get("bankId") or ""):\n'
+            '    rows[row_index]["bankId"] = parsed_bank["id"]\n'
+            'elif from_field in ("homework", "practice", "theory"):\n'
+            "    pass\n",
+            encoding="utf-8",
+        )
+        deploy.patch_server(path)
+        text = path.read_text(encoding="utf-8")
+        self.assertIn('field == "practice" and suffix == ".pdf"', text)
+        self.assertNotIn('field in ("practice", "theory", "homework")', text)
+        self.assertIn('from_field == "practice"', text)
+        self.assertNotIn('from_field in ("homework", "practice", "theory")', text)
+        self.assertIn('if field == "practice":', text)
+        self.assertNotIn('or not str(rows[row_index].get("bankId")', text)
+
     def test_patch_server_always_installs_students_handler(self) -> None:
         deploy = load_deploy()
         path = self.app / "server.py"
@@ -168,7 +190,7 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("journal-students-safety-begin", server_text)
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("file-note1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("bank-del1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 
@@ -258,6 +280,81 @@ class ProductionStudentsSafetyTest(unittest.TestCase):
         other.path = "/api/session"
         with self.assertRaises(RuntimeError):
             Handler.do_GET(other)
+
+    def test_teacher_can_delete_pdf_bank_via_safety_post(self) -> None:
+        import importlib.util
+        import io
+        import json
+        import threading
+
+        spec = importlib.util.spec_from_file_location(
+            "production_students_safety",
+            ROOT / "tools" / "production_students_safety.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        class Handler:
+            def __init__(self) -> None:
+                self.path = "/api/banks/delete"
+                self.wfile = io.BytesIO()
+                self.status = 0
+
+            def do_GET(self) -> None:
+                raise RuntimeError("old get boom")
+
+            def do_POST(self) -> None:
+                raise RuntimeError("old post boom")
+
+            def _user(self):
+                return {"role": "teacher"}
+
+            def _read_json(self):
+                return {"id": "pdf-abc123def456"}
+
+            def send_response(self, status) -> None:
+                self.status = status
+
+            def send_header(self, key, value) -> None:
+                return None
+
+            def end_headers(self) -> None:
+                return None
+
+        saved = {}
+        journal_mod = type("Journal", (), {})()
+        journal_mod.purge_bank = staticmethod(
+            lambda data, bank_id: data.setdefault("purged", []).append(bank_id) or ""
+        )
+        journal_mod.list_banks = staticmethod(lambda: [{"id": "ege-10"}])
+        journal_mod.public_students_payload = staticmethod(
+            lambda students: {"students": students or []}
+        )
+        data_store = {"students": [{"id": "1", "name": "рома"}]}
+        installed = module.install(
+            {
+                "Handler": Handler,
+                "load_data": lambda: data_store,
+                "save_data": lambda data: saved.update(data),
+                "journal": journal_mod,
+                "DATA_LOCK": threading.Lock(),
+            }
+        )
+        self.assertTrue(installed)
+
+        request = Handler()
+        Handler.do_POST(request)
+        self.assertEqual(request.status, 200)
+        body = json.loads(request.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["banks"][0]["id"], "ege-10")
+        self.assertEqual(saved["purged"], ["pdf-abc123def456"])
+
+        other = Handler()
+        other.path = "/api/login"
+        with self.assertRaises(RuntimeError):
+            Handler.do_POST(other)
 
     def test_safety_block_is_idempotent(self) -> None:
         self._temp = tempfile.TemporaryDirectory()

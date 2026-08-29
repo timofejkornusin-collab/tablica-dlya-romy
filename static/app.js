@@ -1175,22 +1175,115 @@ function renderList() {
       .join("")}</div>`;
 }
 
-function bankOptions(selected) {
+function bankLabel(bank, fallback) {
+  if (!bank) return fallback || "Задания из PDF";
+  const extra = bank.total ? ` · ${bank.total}` : "";
+  return bank.id === "ege-10" ? bank.title : `${bank.title || bank.id}${extra}`;
+}
+
+function bankItems(selected) {
   const items = state.banks.length ? state.banks.slice() : [{ id: "ege-10", title: "Задание 10 ЕГЭ" }];
   if (selected && !items.some((bank) => bank.id === selected)) {
     const student = currentStudent();
     const row = student && (student.rows || []).find((item) => item.bankId === selected);
     items.push({ id: selected, title: (row && row.bankTitle) || "Задания из PDF" });
   }
-  return `<option value="">— нет —</option>${items
+  return items;
+}
+
+function bankPickerHtml(rowIndex, selected) {
+  const items = bankItems(selected);
+  const current = items.find((bank) => bank.id === selected);
+  const currentLabel = selected ? bankLabel(current) : "— нет —";
+  const rows = [
+    `<button class="bank-picker-choice" type="button" data-row="${rowIndex}" data-bank="">— нет —</button>`,
+    ...items.map((bank) => {
+      const canDelete = String(bank.id || "").startsWith("pdf-");
+      return `<div class="bank-picker-row${bank.id === selected ? " is-selected" : ""}">
+        <button class="bank-picker-choice" type="button" data-row="${rowIndex}" data-bank="${escapeHtml(bank.id)}">${escapeHtml(
+          bankLabel(bank)
+        )}</button>
+        ${
+          canDelete
+            ? `<button class="bank-delete" type="button" data-bank="${escapeHtml(bank.id)}" title="Удалить из практических заданий" aria-label="Удалить ${escapeHtml(
+                bankLabel(bank)
+              )}">×</button>`
+            : ""
+        }
+      </div>`;
+    }),
+  ];
+  return `<div class="bank-picker" data-row="${rowIndex}">
+    <button class="bank-picker-toggle" type="button" data-row="${rowIndex}" aria-expanded="false">${escapeHtml(currentLabel)}</button>
+    <div class="bank-picker-menu hidden" data-row="${rowIndex}">${rows.join("")}</div>
+  </div>`;
+}
+
+function closeBankPickers() {
+  document.querySelectorAll(".bank-picker-menu").forEach((menu) => {
+    menu.classList.add("hidden");
+    const picker = document.querySelector(`.bank-picker[data-row="${menu.dataset.row}"]`);
+    if (picker && menu.parentElement !== picker) picker.appendChild(menu);
+    menu.style.left = "";
+    menu.style.top = "";
+    menu.style.width = "";
+  });
+  document.querySelectorAll(".bank-picker-toggle").forEach((button) => button.setAttribute("aria-expanded", "false"));
+}
+
+function openBankPicker(picker) {
+  const row = picker.dataset.row;
+  const menu =
+    picker.querySelector(".bank-picker-menu") || document.querySelector(`.bank-picker-menu[data-row="${row}"]`);
+  const toggle = picker.querySelector(".bank-picker-toggle");
+  if (!menu || !toggle) return;
+  const already = !menu.classList.contains("hidden");
+  closeBankPickers();
+  if (already) return;
+  menu.dataset.row = row;
+  document.body.appendChild(menu);
+  menu.classList.remove("hidden");
+  toggle.setAttribute("aria-expanded", "true");
+  const rect = toggle.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, rect.left)}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.width = `${Math.max(rect.width, 240)}px`;
+}
+
+let bankDeleteBusy = false;
+
+async function deletePracticeBank(bankId) {
+  const wanted = String(bankId || "");
+  if (!wanted.startsWith("pdf-") || bankDeleteBusy) return;
+  const bank = (state.banks || []).find((item) => item.id === wanted);
+  const title = bankLabel(bank, "этот набор");
+  closeBankPickers();
+  if (!confirm(`Удалить «${title}» из практических заданий?`)) return;
+  bankDeleteBusy = true;
+  setSaveStatus("Удаляю набор…");
+  try {
+    const data = await api("/api/banks/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: wanted }),
+    });
+    if (Array.isArray(data.banks)) state.banks = data.banks;
+    if (Array.isArray(data.students)) state.students = data.students;
+    else await loadStudents();
+    setSaveStatus("Набор удалён");
+    renderTable();
+  } finally {
+    bankDeleteBusy = false;
+  }
+}
+
+function bankOptions(selected) {
+  return bankItems(selected)
     .map((bank) => {
-      const extra = bank.total ? ` · ${bank.total}` : "";
-      const label = bank.id === "ege-10" ? bank.title : `${bank.title}${extra}`;
       return `<option value="${escapeHtml(bank.id)}" ${bank.id === selected ? "selected" : ""}>${escapeHtml(
-        label
+        bankLabel(bank)
       )}</option>`;
     })
-    .join("")}`;
+    .join("");
 }
 
 function rowHasLessonContent(row) {
@@ -1242,6 +1335,7 @@ function trimRowsToScheduleEnd(student) {
 }
 
 function renderTable() {
+  closeBankPickers();
   const student = currentStudent();
   if (!student) {
     if (isTeacherAccount()) renderList();
@@ -1349,9 +1443,7 @@ function renderTable() {
         }
         if (column.key === "practice") {
           const fraction = row.bankId ? row.practice || "0/0" : "—";
-          const teacherSelect = isTeacherUi()
-            ? `<select data-row="${rowIndex}" data-role="bank">${bankOptions(row.bankId || "")}</select>`
-            : "";
+          const teacherSelect = isTeacherUi() ? bankPickerHtml(rowIndex, row.bankId || "") : "";
           const attach = isTeacherUi()
             ? `<label class="file-corner" title="Загрузить PDF с заданиями">
                 <span class="file-corner-mark" aria-hidden="true">+</span>
@@ -1672,23 +1764,18 @@ async function importLinkedPdfs(student) {
   for (let index = 0; index < (student.rows || []).length; index += 1) {
     const row = student.rows[index];
     if (String(row.importedSource || "").startsWith("manual:")) continue;
-    const url = firstPdfUrl(row.homework) || firstPdfUrl(row.theory);
+    const url = firstPdfUrl(row.practice);
     let payload = null;
     if (url && url !== row.importedSource) {
       payload = { studentId: student.id, row: index, url };
     } else if (!row.bankId) {
-      const field = ["practice", "theory", "homework"].find(
-        (name) =>
-          String(row[`${name}FileName`] || "")
-            .toLowerCase()
-            .endsWith(".pdf") && row[`${name}FileId`]
-      );
-      if (field) {
-        payload = { studentId: student.id, row: index, fromField: field };
+      const name = String(row.practiceFileName || "").toLowerCase();
+      if (name.endsWith(".pdf") && row.practiceFileId) {
+        payload = { studentId: student.id, row: index, fromField: "practice" };
       }
     }
     if (!payload) continue;
-    const key = `${student.id}:${index}:${payload.url || payload.fromField}:${row.theoryFileId || ""}`;
+    const key = `${student.id}:${index}:${payload.url || payload.fromField}:${row.practiceFileId || ""}`;
     if (importFailed.has(key)) continue;
     importInFlight = true;
     setSaveStatus("Разбираю PDF…");
@@ -2062,6 +2149,14 @@ els.tableView.addEventListener("mousedown", (event) => {
 });
 
 els.tableView.addEventListener("click", async (event) => {
+  const pickerToggle = event.target.closest(".bank-picker-toggle");
+  if (pickerToggle) {
+    event.preventDefault();
+    event.stopPropagation();
+    const picker = pickerToggle.closest(".bank-picker");
+    if (picker) openBankPicker(picker);
+    return;
+  }
   const copyRowBtn = event.target.closest(".row-copy-btn");
   if (copyRowBtn) {
     event.preventDefault();
@@ -2301,6 +2396,40 @@ if (els.logoutConfirm) {
     if (event.target === els.logoutConfirm) hideLogoutConfirm();
   });
 }
+
+document.addEventListener("click", (event) => {
+  const bankDelete = event.target.closest(".bank-delete");
+  if (bankDelete) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isTeacherUi()) return;
+    deletePracticeBank(bankDelete.dataset.bank).catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+    return;
+  }
+  const bankChoice = event.target.closest(".bank-picker-choice");
+  if (bankChoice) {
+    event.preventDefault();
+    if (!isTeacherUi()) return;
+    const student = currentStudent();
+    const row = student && student.rows[Number(bankChoice.dataset.row)];
+    if (!row) return;
+    row.bankId = bankChoice.dataset.bank || "";
+    row.importedSource = row.bankId ? `manual:${row.bankId}` : "";
+    closeBankPickers();
+    persistCurrent()
+      .then(() => renderTable())
+      .catch((error) => setSaveStatus(error.message));
+    return;
+  }
+  if (!event.target.closest(".bank-picker, .bank-picker-menu")) closeBankPickers();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeBankPickers();
+});
+window.addEventListener("scroll", closeBankPickers, true);
 
 function startPolling() {
   clearInterval(pollTimer);

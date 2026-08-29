@@ -68,12 +68,14 @@ APP_MARKERS = (
     "startErrorHtml",
     "hideUnwantedLabels",
     "setPageSubtitle",
+    "bank-delete",
+    "deletePracticeBank",
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=quiet-ui1",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=bank-del1",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=row-copy1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=file-note1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=bank-del1",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
@@ -230,6 +232,41 @@ def patch_server(path: Path) -> None:
     text, _count = APPLY_SCHEDULE_RE.subn(APPLY_SCHEDULE_WITH_END, text)
     text, _students = STUDENTS_LIST_RE.subn("journal.public_students_payload(data.get('students'))", text)
     text, _dumps = JSON_DUMPS_RE.subn(SAFE_JSON_DUMPS, text)
+    for old, new in (
+        (
+            'field in ("practice", "theory", "homework") and suffix == ".pdf"',
+            'field == "practice" and suffix == ".pdf"',
+        ),
+        (
+            "field in ('practice', 'theory', 'homework') and suffix == '.pdf'",
+            'field == "practice" and suffix == ".pdf"',
+        ),
+        (
+            'field in ("theory", "homework", "practice") and suffix == ".pdf"',
+            'field == "practice" and suffix == ".pdf"',
+        ),
+        (
+            'suffix == ".pdf" and field in ("practice", "theory", "homework")',
+            'field == "practice" and suffix == ".pdf"',
+        ),
+        (
+            'from_field in ("homework", "practice", "theory")',
+            'from_field == "practice"',
+        ),
+        (
+            'from_field in ("practice", "theory", "homework")',
+            'from_field == "practice"',
+        ),
+        (
+            'if field == "practice" or not str(rows[row_index].get("bankId") or ""):',
+            'if field == "practice":',
+        ),
+        (
+            "if field == 'practice' or not str(rows[row_index].get('bankId') or ''):",
+            'if field == "practice":',
+        ),
+    ):
+        text = text.replace(old, new)
     text = insert_safety_block(text)
     path.write_text(text, encoding="utf-8")
     py_compile.compile(str(path), doraise=True)
@@ -306,6 +343,7 @@ def require_python_and_markers() -> None:
         "end_date_from_request_payload" not in journal_py
         or "public_students_payload" not in journal_py
         or "public_student_summary" not in journal_py
+        or "purge_bank" not in journal_py
     ):
         fail("ОШИБКА: загружена не та версия journal.py. Сайт не изменён.")
 
@@ -354,7 +392,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "file-note1" in installed_index else "0"
+    index_marker = "1" if "bank-del1" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -366,7 +404,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("file-note1"))
+        index_marker = str(live_index.count("bank-del1"))
         api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)
