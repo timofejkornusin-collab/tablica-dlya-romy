@@ -53,6 +53,9 @@ class DeployProductionTest(unittest.TestCase):
             "document.body.classList.toggle('practice-open');\n",
             encoding="utf-8",
         )
+        (self.stage / "static" / "find-date.js").write_text("function findLesson() {}\n", encoding="utf-8")
+        (self.stage / "static" / "practice-lock.js").write_text("function lockCard() {}\n", encoding="utf-8")
+        (self.stage / "static" / "practice-reveal.js").write_text("function inject() {}\n", encoding="utf-8")
         (self.stage / "static" / "styles.css").write_text(".stage-styles {}\n", encoding="utf-8")
         (self.stage / "static" / "mobile.css").write_text(".stage-mobile {}\n", encoding="utf-8")
         (self.stage / "static" / "practice-scales.js").write_text("window.practiceScales = null;\n", encoding="utf-8")
@@ -67,7 +70,10 @@ class DeployProductionTest(unittest.TestCase):
             '<link rel="stylesheet" href="practice-scales.css?v=1" />\n'
             '<script src="app.js?v=old"></script>\n'
             '<script src="practice-page.js?v=1"></script>\n'
-            '<script src="practice-scales.js?v=1"></script>\n',
+            '<script src="practice-scales.js?v=1"></script>\n'
+            '<script src="find-date.js?v=2"></script>\n'
+            '<script src="practice-lock.js?v=1"></script>\n'
+            '<script src="practice-reveal.js?v=1"></script>\n',
             encoding="utf-8",
         )
         (self.app / "static" / "app.js").write_text("old-app\n", encoding="utf-8")
@@ -100,6 +106,9 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
+        self.assertIn("find-date.js?v=row-found2", text)
+        self.assertIn("practice-lock.js?v=2", text)
+        self.assertIn("practice-reveal.js?v=2", text)
         self.assertNotIn("?v=old", text)
 
     def test_patch_server_passes_end_date_without_replacing_file(self) -> None:
@@ -214,6 +223,9 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
         self.assertIn("hide-share1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
+        self.assertTrue((self.app / "static" / "find-date.js").exists())
+        self.assertTrue((self.app / "static" / "practice-lock.js").exists())
+        self.assertTrue((self.app / "static" / "practice-reveal.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 
     def test_python_script_runs_with_windows_crlf(self) -> None:
