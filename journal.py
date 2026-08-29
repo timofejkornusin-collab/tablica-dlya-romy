@@ -459,7 +459,7 @@ def load_bank(bank_id: str) -> dict | None:
         return None
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
         return None
     if not isinstance(raw, dict) or not isinstance(raw.get("tasks"), list):
         return None
@@ -526,7 +526,10 @@ def is_word_task(task: dict | None) -> bool:
         return True
     if kind in {"match", "choice"}:
         return False
-    options = [item for item in (task.get("options") or []) if str(item).strip()]
+    raw_options = task.get("options")
+    if not isinstance(raw_options, list):
+        raw_options = []
+    options = [item for item in raw_options if str(item).strip()]
     if len(options) >= 3:
         return False
     prompt = str(task.get("prompt") or "").lower()
@@ -567,22 +570,47 @@ def normalize_answer(raw: str, word: bool = False) -> str:
     return digits
 
 
+def empty_bank_stats() -> dict:
+    return {
+        "done": 0,
+        "total": 0,
+        "correct": 0,
+        "percent": 0,
+        "donePercent": 0,
+        "accuracyPercent": 0,
+    }
+
+
 def bank_stats(student: dict, bank_id: str) -> dict:
+    try:
+        return _bank_stats(student, bank_id)
+    except Exception:
+        return empty_bank_stats()
+
+
+def _bank_stats(student: dict, bank_id: str) -> dict:
     bank = load_bank(bank_id)
-    total = len(bank.get("tasks") or []) if bank else 0
-    answers = ((student.get("progress") or {}).get(bank_id) or {}) if isinstance(student.get("progress"), dict) else {}
+    tasks = bank.get("tasks") if isinstance(bank, dict) else None
+    if not isinstance(tasks, list):
+        tasks = []
+    total = len(tasks)
+    progress = student.get("progress") if isinstance(student, dict) else None
+    answers = progress.get(bank_id) if isinstance(progress, dict) else None
+    if not isinstance(answers, dict):
+        answers = {}
     done = 0
     correct = 0
-    if bank:
-        for task in bank["tasks"]:
-            word = is_word_task(task)
-            given = normalize_answer(str(answers.get(str(task.get("n")), "") or ""), word=word)
-            if not given:
-                continue
-            done += 1
-            key = normalize_answer(str(task.get("answer") or ""), word=word)
-            if key and given == key:
-                correct += 1
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        word = is_word_task(task)
+        given = normalize_answer(str(answers.get(str(task.get("n")), "") or ""), word=word)
+        if not given:
+            continue
+        done += 1
+        key = normalize_answer(str(task.get("answer") or ""), word=word)
+        if key and given == key:
+            correct += 1
     done_percent = int(round(100 * done / total)) if total else 0
     percent = int(round(100 * correct / total)) if total else 0
     accuracy_percent = int(round(100 * correct / done)) if done else 0
@@ -606,14 +634,35 @@ def progress_color(percent: int) -> str:
     return "dark"
 
 
+def public_student_stub(student: dict) -> dict:
+    schedule = student.get("schedule") if isinstance(student.get("schedule"), dict) else None
+    return {
+        "id": student.get("id"),
+        "name": str(student.get("name") or ""),
+        "template": "twice" if student.get("template") == "twice" else "once",
+        "login": str(student.get("login") or ""),
+        "password_is_initial": bool(student.get("password_is_initial")),
+        "rows": [],
+        "schedule": schedule,
+    }
+
+
 def public_student(student: dict | None) -> dict | None:
-    if not student:
+    if not isinstance(student, dict) or not student:
         return None
+    try:
+        return _public_student(student)
+    except Exception:
+        return public_student_stub(student)
+
+
+def _public_student(student: dict) -> dict:
     rows = []
     bank_cache: dict[str, dict | None] = {}
     schedule = student.get("schedule") if isinstance(student.get("schedule"), dict) else None
     end = parse_iso_date(str((schedule or {}).get("endDate") or ""))
-    source_rows = rows_until_end(student.get("rows") or [], end)
+    raw_rows = student.get("rows")
+    source_rows = rows_until_end(raw_rows if isinstance(raw_rows, list) else [], end)
     for row in source_rows:
         if not isinstance(row, dict):
             continue
@@ -628,7 +677,7 @@ def public_student(student: dict | None) -> dict | None:
             if item["bankId"] not in bank_cache:
                 bank_cache[item["bankId"]] = load_bank(item["bankId"])
             bank = bank_cache[item["bankId"]]
-            item["bankTitle"] = (bank.get("title") if bank else "") or item["bankId"]
+            item["bankTitle"] = str((bank.get("title") if bank else "") or item["bankId"])
             stats = bank_stats(student, item["bankId"])
             item["practice"] = f"{stats['done']}/{stats['total']}"
             item["progress"] = f"{stats['percent']}%"
@@ -636,15 +685,23 @@ def public_student(student: dict | None) -> dict | None:
             item["progressColor"] = progress_color(stats["percent"])
         item["extraLesson"] = is_extra_lesson(row)
         rows.append(item)
-    return {
-        "id": student.get("id"),
-        "name": student.get("name") or "",
-        "template": "twice" if student.get("template") == "twice" else "once",
-        "login": student.get("login") or "",
-        "password_is_initial": bool(student.get("password_is_initial")),
-        "rows": rows,
-        "schedule": student.get("schedule") if isinstance(student.get("schedule"), dict) else None,
-    }
+    payload = public_student_stub(student)
+    payload["rows"] = rows
+    return payload
+
+
+def public_students_payload(students) -> dict:
+    items = []
+    if not isinstance(students, list):
+        return {"students": items}
+    for item in students:
+        try:
+            public = public_student(item)
+        except Exception:
+            continue
+        if public:
+            items.append(public)
+    return {"students": items}
 
 
 def public_practice(bank: dict, student: dict, role: str) -> dict:

@@ -61,7 +61,9 @@ if ! grep -q "copy-table-btn" "$STAGE/static/app.js" ||
    ! grep -q "ensureEndDateField" "$STAGE/static/app.js" ||
    ! grep -q "trimRowsToScheduleEnd" "$STAGE/static/app.js" ||
    ! grep -q "extraLessonRow" "$STAGE/static/app.js" ||
-   ! grep -q "end_date_from_request_payload" "$STAGE/journal.py"; then
+   ! grep -q "startErrorHtml" "$STAGE/static/app.js" ||
+   ! grep -q "end_date_from_request_payload" "$STAGE/journal.py" ||
+   ! grep -q "public_students_payload" "$STAGE/journal.py"; then
   echo "ОШИБКА: загружена не та версия app.js. Сайт не изменён."
   exit 1
 fi
@@ -114,9 +116,9 @@ path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
 replacements = {
-    r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=extra-row1',
+    r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=students-fix1',
     r'mobile\.css(?:\?v=[^"]*)?': 'mobile.css?v=row-copy1',
-    r'app\.js(?:\?v=[^"]*)?': 'app.js?v=extra-row1',
+    r'app\.js(?:\?v=[^"]*)?': 'app.js?v=students-fix1',
     r'practice-page\.js(?:\?v=[^"]*)?': 'practice-page.js?v=2',
     r'practice-scales\.css(?:\?v=[^"]*)?': 'practice-scales.css?v=2',
     r'practice-scales\.js(?:\?v=[^"]*)?': 'practice-scales.js?v=2',
@@ -146,7 +148,7 @@ restart_on_8765
 
 local_code="$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ || true)"
 app_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/app.js | grep -c 'restorePracticeScroll' || true)"
-index_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/ | grep -c 'extra-row1' || true)"
+index_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/ | grep -c 'students-fix1' || true)"
 api_code="$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/api/students || true)"
 
 echo "Проверка: site=$local_code app=$app_marker index=$index_marker api=$api_code"

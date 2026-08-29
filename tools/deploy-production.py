@@ -64,12 +64,13 @@ APP_MARKERS = (
     "ensureEndDateField",
     "trimRowsToScheduleEnd",
     "extraLessonRow",
+    "startErrorHtml",
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=extra-row1",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=students-fix1",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=row-copy1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=extra-row1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=students-fix1",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
@@ -113,21 +114,42 @@ APPLY_SCHEDULE_RE = re.compile(
 )
 APPLY_SCHEDULE_WITH_END = (
     "journal.apply_schedule(student, start, slots, template, "
-    "journal.end_from_payload(payload, start, slots, student.get('schedule')))"
+    "journal.end_from_payload(locals().get('payload'), start, slots, student.get('schedule')))"
 )
+UNSAFE_END_FROM_PAYLOAD = (
+    "journal.end_from_payload(payload, start, slots, student.get('schedule'))"
+)
+SAFE_END_FROM_PAYLOAD = (
+    "journal.end_from_payload(locals().get('payload'), start, slots, student.get('schedule'))"
+)
+STUDENTS_LIST_RE = re.compile(
+    r'\{\s*"students"\s*:\s*\[\s*(?:journal\.)?public_student\(\s*(?P<var>\w+)\s*\)\s+'
+    r'for\s+(?P=var)\s+in\s+data(?:\.get\(\s*["\']students["\']\s*\)|\[["\']students["\']\])'
+    r'(?:\s+if\s+(?:journal\.)?public_student\(\s*(?P=var)\s*\))?\s*\]\s*\}'
+)
+JSON_DUMPS_RE = re.compile(
+    r'json\.dumps\(\s*payload\s*,\s*ensure_ascii\s*=\s*False\s*\)\.encode\(\s*["\']utf-8["\']\s*\)'
+)
+SAFE_JSON_DUMPS = 'json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8", "replace")'
 
 
 def patch_server(path: Path) -> None:
-    """Keep production server.py, but pass the last-lesson date into apply_schedule."""
+    """Keep production server.py, but make student list and schedule updates safe."""
     if not path.is_file():
         return
     text = path.read_text(encoding="utf-8")
-    if "journal.end_from_payload(payload" in text:
+    original = text
+    text = text.replace(UNSAFE_END_FROM_PAYLOAD, SAFE_END_FROM_PAYLOAD)
+    text = text.replace(
+        'journal.end_from_payload(payload, start, slots, student.get("schedule"))',
+        SAFE_END_FROM_PAYLOAD,
+    )
+    text, _count = APPLY_SCHEDULE_RE.subn(APPLY_SCHEDULE_WITH_END, text)
+    text, _students = STUDENTS_LIST_RE.subn("journal.public_students_payload(data.get('students'))", text)
+    text, _dumps = JSON_DUMPS_RE.subn(SAFE_JSON_DUMPS, text)
+    if text == original:
         return
-    new_text, count = APPLY_SCHEDULE_RE.subn(APPLY_SCHEDULE_WITH_END, text)
-    if count == 0:
-        return
-    path.write_text(new_text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     py_compile.compile(str(path), doraise=True)
 
 
@@ -197,7 +219,7 @@ def require_python_and_markers() -> None:
     if "scrollTop = 0" in page_js or "scrollTop=0" in page_js:
         fail("ОШИБКА: practice-page.js снова сбрасывает прокрутку. Сайт не изменён.")
     journal_py = (STAGE / "journal.py").read_text(encoding="utf-8", errors="replace")
-    if "end_date_from_request_payload" not in journal_py:
+    if "end_date_from_request_payload" not in journal_py or "public_students_payload" not in journal_py:
         fail("ОШИБКА: загружена не та версия journal.py. Сайт не изменён.")
 
 
@@ -241,7 +263,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "extra-row1" in installed_index else "0"
+    index_marker = "1" if "students-fix1" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -253,7 +275,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("extra-row1"))
+        index_marker = str(live_index.count("students-fix1"))
         api_code = curl_code(LOCAL_URL + "/api/students")
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)
@@ -265,6 +287,12 @@ def verify_live() -> tuple[str, str, str]:
         restart_on_8765()
         rollback_code = "skip" if SKIP_HEALTHCHECK else curl_code(LOCAL_URL + "/")
         fail("ОТКАТ ЗАВЕРШЁН. python8765:%s" % rollback_code)
+    if not SKIP_HEALTHCHECK and api_code not in ("200", "401"):
+        print("ПРОВЕРКА НЕ ПРОШЛА: /api/students=%s. ВОССТАНАВЛИВАЮ ПРЕЖНЮЮ ВЕРСИЮ." % api_code)
+        restore_files()
+        restart_on_8765()
+        rollback_code = curl_code(LOCAL_URL + "/")
+        fail("ОТКАТ ЗАВЕРШЁН. python8765:%s api:%s" % (rollback_code, api_code))
 
     if SKIP_HEALTHCHECK:
         python_8766 = "000"

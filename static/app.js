@@ -2304,6 +2304,24 @@ async function enterApp() {
   afterLogin();
 }
 
+function startErrorHtml(error) {
+  const status = Number(error && error.status) || 0;
+  if (status >= 500) {
+    return `
+      <div class="empty-state">
+        <p>Не получилось загрузить список учеников.</p>
+        <p>Обновите страницу. Если ошибка останется — это сбой сервера, файл «запустить.bat» тут не поможет.</p>
+      </div>
+    `;
+  }
+  return `
+    <div class="empty-state">
+      <p>Не получилось открыть журнал.</p>
+      <p>Запустите файл «запустить.bat».</p>
+    </div>
+  `;
+}
+
 async function start() {
   loadTableClipboard();
   loadRowClipboard();
@@ -2316,12 +2334,7 @@ async function start() {
     await enterApp();
   } catch (error) {
     if (els.app) els.app.classList.remove("hidden");
-    els.listView.innerHTML = `
-      <div class="empty-state">
-        <p>Не получилось открыть журнал.</p>
-        <p>Запустите файл «запустить.bat».</p>
-      </div>
-    `;
+    els.listView.innerHTML = startErrorHtml(error);
     setSaveStatus(error.message);
   }
 }

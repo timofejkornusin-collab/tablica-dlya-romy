@@ -289,11 +289,85 @@ class ExtraLessonTest(unittest.TestCase):
     def test_app_inserts_extra_row_without_dom_resync(self) -> None:
         app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("function extraLessonRow()", app_js)
+        self.assertIn("function startErrorHtml(", app_js)
         self.assertIn("skipTableDomSync = true", app_js)
         self.assertIn("student.rows.splice(at, 0, extraLessonRow())", app_js)
         self.assertIn("if (!skipTableDomSync) syncTableRowsFromDom(student)", app_js)
         self.assertIn("дату ставит педагог", app_js)
         self.assertIn("extra-lesson", (ROOT / "static" / "styles.css").read_text(encoding="utf-8"))
+
+
+class StudentsApiSafetyTest(unittest.TestCase):
+    def test_public_student_survives_broken_rows_and_progress(self) -> None:
+        student = {
+            "id": "broken",
+            "name": "Сломанный",
+            "rows": "not-a-list",
+            "progress": {"ege-10": ["1", "2"]},
+            "schedule": {"endDate": "not-a-date", "slots": 3},
+        }
+        public = journal.public_student(student)
+        self.assertEqual(public["id"], "broken")
+        self.assertEqual(public["rows"], [])
+
+        mixed = journal.public_students_payload(
+            [
+                "skip-me",
+                None,
+                {},
+                {
+                    "id": "ok",
+                    "name": "Ок",
+                    "rows": [
+                        {
+                            "date": "03.09.2026, 16:00",
+                            "bankId": "missing-bank",
+                            "extraLesson": True,
+                            "topic": "Тема",
+                        }
+                    ],
+                    "progress": "nope",
+                },
+            ]
+        )
+        self.assertEqual(len(mixed["students"]), 1)
+        self.assertEqual(mixed["students"][0]["id"], "ok")
+        self.assertTrue(mixed["students"][0]["rows"][0]["extraLesson"])
+
+    def test_bank_stats_ignores_malformed_tasks_and_answers(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            banks = Path(folder)
+            (banks / "weird.json").write_text(
+                json.dumps(
+                    {
+                        "id": "weird",
+                        "title": "Странный",
+                        "tasks": ["broken", {"n": 1, "options": 7, "answer": "1"}, {"n": 2, "answer": "2"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.object(journal, "BANKS_DIR", banks):
+                stats = journal.bank_stats(
+                    {"progress": {"weird": "123"}},
+                    "weird",
+                )
+                self.assertEqual(stats["total"], 3)
+                self.assertEqual(stats["done"], 0)
+                public = journal.public_student(
+                    {
+                        "id": "s",
+                        "name": "Н",
+                        "rows": [{"date": "03.09.2026, 16:00", "bankId": "weird"}],
+                        "progress": {"weird": "123"},
+                    }
+                )
+                self.assertEqual(public["rows"][0]["practice"], "0/3")
+
+    def test_public_student_skips_non_dict_entries(self) -> None:
+        self.assertIsNone(journal.public_student("рома"))
+        self.assertIsNone(journal.public_student(None))
+        self.assertIsNone(journal.public_student({}))
 
 
 class TableCopyTest(unittest.TestCase):

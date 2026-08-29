@@ -734,16 +734,23 @@ class Handler(SimpleHTTPRequestHandler):
         return ctype
 
     def _send_json(self, payload: dict, status: int = 200, cookie: str | None = None) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Connection", "close")
-        if cookie:
-            self.send_header("Set-Cookie", cookie)
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8", "replace")
+        except Exception:
+            body = json.dumps({"ok": False, "error": "Не получилось отдать данные"}, ensure_ascii=False).encode("utf-8")
+            status = 500
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception:
+            return
 
     def _cookie_header(self, token: str | None, max_age: int = 60 * 60 * 14) -> str:
         if not token:
@@ -816,18 +823,21 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json(self._session_payload(self._user()))
             return
         if path == "/api/students":
-            user = self._user()
-            if not user:
-                self._send_json({"ok": False, "error": "Нужно войти"}, 401)
-                return
-            with DATA_LOCK:
-                data = load_data()
-            if user["role"] == "teacher":
-                self._send_json({"students": [public_student(item) for item in data["students"] if public_student(item)]})
-                return
-            student = find_student(data, user.get("student_id", ""))
-            payload = public_student(student)
-            self._send_json({"students": [payload] if payload else []})
+            try:
+                user = self._user()
+                if not user:
+                    self._send_json({"ok": False, "error": "Нужно войти"}, 401)
+                    return
+                with DATA_LOCK:
+                    data = load_data()
+                if user["role"] == "teacher":
+                    self._send_json(journal.public_students_payload(data.get("students")))
+                    return
+                student = find_student(data, user.get("student_id", ""))
+                payload = public_student(student)
+                self._send_json({"students": [payload] if payload else []})
+            except Exception:
+                self._send_json({"ok": False, "error": "Не получилось открыть журнал"}, 500)
             return
         if path == "/api/banks":
             if not self._user():
