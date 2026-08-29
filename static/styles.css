@@ -924,59 +924,61 @@ textarea:focus {
   padding-right: 28px;
 }
 
-.practice-box select {
+.practice-box select,
+.bank-picker-toggle {
   width: 100%;
   font-size: 0.88rem;
   padding: 6px 8px;
 }
 
 .bank-picker {
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
   position: relative;
   width: 100%;
 }
 
-.bank-picker select {
-  flex: 1;
-  min-width: 0;
-}
-
-.bank-files-toggle {
-  flex: 0 0 32px;
-  border: 1px solid var(--line);
+.bank-picker-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
   background: #fff;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  color: var(--danger);
+  color: var(--navy);
   font: inherit;
-  font-size: 1.25rem;
-  font-weight: 700;
-  line-height: 1;
   cursor: pointer;
 }
 
-.bank-files-toggle:hover,
-.bank-delete:hover {
-  background: var(--terracotta-soft);
+.bank-picker-caret {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
 .bank-picker-menu {
   position: fixed;
   z-index: 400;
+  box-sizing: border-box;
   max-height: 280px;
   overflow: auto;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: var(--shadow);
-  padding: 4px;
+  padding: 6px;
+}
+
+.bank-picker-menu > .bank-picker-choice {
+  width: 100%;
+  margin-bottom: 2px;
 }
 
 .bank-picker-row {
   display: flex;
-  align-items: stretch;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .bank-picker-row.is-selected .bank-picker-choice {
@@ -984,7 +986,10 @@ textarea:focus {
 }
 
 .bank-picker-choice {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   text-align: left;
   background: transparent;
   border: 0;
@@ -993,15 +998,34 @@ textarea:focus {
   font: inherit;
   font-size: 0.88rem;
   padding: 8px 10px;
+  cursor: pointer;
+}
+
+.bank-picker-name {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bank-picker-choice:hover,
+.bank-delete:hover {
+  background: var(--terracotta-soft);
 }
 
 .bank-delete {
-  flex: 0 0 34px;
+  flex: 0 0 32px;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  margin-left: 0;
   border: 0;
   background: transparent;
   color: var(--danger);
   font: inherit;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   font-weight: 700;
   line-height: 1;
   border-radius: 8px;

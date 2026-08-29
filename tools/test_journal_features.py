@@ -652,12 +652,17 @@ class BankKeyTest(unittest.TestCase):
         styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
         self.assertIn("deletePracticeBank", app_js)
         self.assertIn("bank-delete", app_js)
-        self.assertIn("bank-files-toggle", app_js)
-        self.assertIn('data-role="bank"', app_js)
+        self.assertIn("bank-picker-toggle", app_js)
+        self.assertIn("bank-picker-choice", app_js)
+        self.assertIn("bank-picker-name", app_js)
+        self.assertNotIn("bank-files-toggle", app_js)
         self.assertIn("/api/banks/delete", app_js)
         self.assertNotIn('window.addEventListener("scroll", closeBankPickers, true)', app_js)
+        self.assertIn('row.importedSource = row.bankId ? `manual:${row.bankId}` : "manual:"', app_js)
         self.assertIn("purge_bank", (ROOT / "journal.py").read_text(encoding="utf-8"))
         self.assertIn(".bank-delete", styles)
+        self.assertIn("text-overflow: ellipsis", styles)
+        self.assertIn("flex-shrink: 0", styles)
 
 
 class CorrectProgressTest(unittest.TestCase):
@@ -741,7 +746,7 @@ class PurgeBankTest(unittest.TestCase):
         self.assertTrue((self.banks_dir / "ege-10.json").exists())
         row = data["students"][0]["rows"][0]
         self.assertEqual(row["bankId"], "")
-        self.assertEqual(row["importedSource"], "")
+        self.assertEqual(row["importedSource"], "manual:")
         self.assertNotIn("pdf-abc123def456", data["students"][0]["progress"])
         self.assertEqual(data["students"][0]["progress"]["ege-10"], {"1": "1"})
 
@@ -757,7 +762,7 @@ class PurgeBankTest(unittest.TestCase):
         err = journal.purge_bank(data, "pdf-missing0001")
         self.assertEqual(err, "")
         self.assertEqual(data["students"][0]["rows"][0]["bankId"], "")
-        self.assertEqual(data["students"][0]["rows"][0]["importedSource"], "")
+        self.assertEqual(data["students"][0]["rows"][0]["importedSource"], "manual:")
 
 
 if __name__ == "__main__":

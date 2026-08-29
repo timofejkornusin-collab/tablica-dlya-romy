@@ -518,7 +518,7 @@ def purge_bank(data: dict, bank_id: str) -> str:
         for row in student.get("rows") or []:
             if isinstance(row, dict) and str(row.get("bankId") or "") == safe:
                 row["bankId"] = ""
-                row["importedSource"] = ""
+                row["importedSource"] = "manual:"
         progress = student.get("progress")
         if isinstance(progress, dict):
             progress.pop(safe, None)
