@@ -809,6 +809,7 @@ textarea:focus {
   position: absolute;
   inset: 0;
   padding-right: 32px;
+  padding-bottom: 52px;
 }
 
 .material-tools {
@@ -818,9 +819,38 @@ textarea:focus {
   bottom: 6px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   max-width: calc(100% - 40px);
+  max-height: 46%;
+  overflow: auto;
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px 2px 10px;
+  border-radius: 999px;
+  background: var(--navy-soft);
+}
+
+.file-chip .file-open {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 148px;
+  word-break: normal;
+}
+
+.file-chip .file-remove {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .file-corner {

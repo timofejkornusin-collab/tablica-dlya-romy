@@ -564,6 +564,75 @@ class RowCopyTest(unittest.TestCase):
         self.assertIn("const rowTools = isTeacherUi()", app_js)
 
 
+class TheoryFilesTest(unittest.TestCase):
+    def test_attach_appends_theory_files_and_keeps_old(self) -> None:
+        row = journal.empty_row()
+        self.assertEqual(journal.attach_row_file(row, "theory", "aaaa.pdf", "Первый.pdf"), "")
+        self.assertEqual(journal.attach_row_file(row, "theory", "bbbb.pdf", "Второй.pdf"), "")
+        self.assertEqual(row["theoryFileId"], "aaaa.pdf")
+        self.assertEqual(row["theoryFileName"], "Первый.pdf")
+        self.assertEqual(
+            row["theoryFiles"],
+            [{"id": "aaaa.pdf", "name": "Первый.pdf"}, {"id": "bbbb.pdf", "name": "Второй.pdf"}],
+        )
+
+    def test_detach_one_theory_file_keeps_the_other(self) -> None:
+        row = journal.empty_row()
+        journal.attach_row_file(row, "theory", "aaaa.pdf", "Первый.pdf")
+        journal.attach_row_file(row, "theory", "bbbb.pdf", "Второй.pdf")
+        removed = journal.detach_row_file(row, "theory", "aaaa.pdf")
+        self.assertEqual(removed, "aaaa.pdf")
+        self.assertEqual(row["theoryFileId"], "bbbb.pdf")
+        self.assertEqual(row["theoryFiles"], [{"id": "bbbb.pdf", "name": "Второй.pdf"}])
+
+    def test_homework_still_replaces_single_file(self) -> None:
+        row = journal.empty_row()
+        self.assertEqual(journal.attach_row_file(row, "homework", "old.doc", "old.doc"), "")
+        self.assertEqual(journal.attach_row_file(row, "homework", "new.doc", "new.doc"), "old.doc")
+        self.assertEqual(row["homeworkFileId"], "new.doc")
+
+    def test_theory_file_limit(self) -> None:
+        row = journal.empty_row()
+        for index in range(journal.MAX_THEORY_FILES):
+            journal.attach_row_file(row, "theory", f"{index:02d}.pdf", f"{index}.pdf")
+        with self.assertRaises(ValueError):
+            journal.attach_row_file(row, "theory", "zz.pdf", "too-many.pdf")
+
+    def test_public_student_includes_theory_files(self) -> None:
+        student = {"id": "s", "name": "Н", "rows": [journal.empty_row()]}
+        journal.attach_row_file(student["rows"][0], "theory", "aaaa.pdf", "A.pdf")
+        journal.attach_row_file(student["rows"][0], "theory", "bbbb.pdf", "B.pdf")
+        public = journal.public_student(student)
+        self.assertEqual(len(public["rows"][0]["theoryFiles"]), 2)
+
+    def test_copy_row_copies_all_theory_files(self) -> None:
+        source = journal.empty_row("03.09.2026, 18:00")
+        journal.attach_row_file(source, "theory", "aaaa.pdf", "A.pdf")
+        journal.attach_row_file(source, "theory", "bbbb.pdf", "B.pdf")
+        target = journal.empty_row("10.09.2026, 17:00")
+        journal.copy_lesson_row(source, target)
+        self.assertEqual(len(target["theoryFiles"]), 2)
+        self.assertEqual(target["date"], "10.09.2026, 17:00")
+
+    def test_upload_ids_include_extra_theory_files(self) -> None:
+        row = journal.empty_row()
+        journal.attach_row_file(row, "theory", "aaaa.pdf", "A.pdf")
+        journal.attach_row_file(row, "theory", "bbbb.pdf", "B.pdf")
+        self.assertEqual(server.row_upload_ids([row]), {"aaaa.pdf", "bbbb.pdf"})
+
+    def test_app_renders_multiple_theory_files(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("rowTheoryFiles", app_js)
+        self.assertIn("file-chip", app_js)
+        self.assertIn('field === "theory" ? "multiple"', app_js)
+        self.assertIn("data-file-id", app_js)
+        self.assertIn("fileId: remove.dataset.fileId", app_js)
+        self.assertIn(".file-chip", styles)
+        self.assertIn("attach_row_file", (ROOT / "journal.py").read_text(encoding="utf-8"))
+        self.assertIn("journal.attach_row_file", (ROOT / "server.py").read_text(encoding="utf-8"))
+
+
 class BankKeyTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()

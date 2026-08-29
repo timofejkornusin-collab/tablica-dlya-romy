@@ -24,6 +24,7 @@ FILE_KEYS = (
     "practiceFileName",
 )
 LESSON_STATUSES = {"held", "missed"}
+MAX_THEORY_FILES = 12
 ROW_COPY_KEYS = (
     "topic",
     "theory",
@@ -53,7 +54,114 @@ def empty_row(date_str: str = "") -> dict:
     row["extraLesson"] = False
     for key in FILE_KEYS:
         row[key] = ""
+    row["theoryFiles"] = []
     return row
+
+
+def normalize_theory_files(row: dict | None) -> list[dict]:
+    if not isinstance(row, dict):
+        return []
+    files = []
+    seen = set()
+    raw = row.get("theoryFiles")
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            file_id = str(item.get("id") or "").strip()
+            name = str(item.get("name") or file_id).strip() or file_id
+            if not file_id or file_id in seen:
+                continue
+            seen.add(file_id)
+            files.append({"id": file_id, "name": name})
+    if not files:
+        file_id = str(row.get("theoryFileId") or "").strip()
+        if file_id:
+            files.append({"id": file_id, "name": str(row.get("theoryFileName") or file_id).strip() or file_id})
+    return files
+
+
+def sync_theory_files(row: dict, files: list[dict] | None = None) -> list[dict]:
+    items = files if files is not None else normalize_theory_files(row)
+    clean = []
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        file_id = str(item.get("id") or "").strip()
+        name = str(item.get("name") or file_id).strip() or file_id
+        if not file_id or file_id in seen:
+            continue
+        seen.add(file_id)
+        clean.append({"id": file_id, "name": name})
+    row["theoryFiles"] = clean
+    if clean:
+        row["theoryFileId"] = clean[0]["id"]
+        row["theoryFileName"] = clean[0]["name"]
+    else:
+        row["theoryFileId"] = ""
+        row["theoryFileName"] = ""
+    return clean
+
+
+def attach_row_file(row: dict, field: str, stored: str, original: str) -> str:
+    """Attach a stored upload. Theory keeps previous files; other fields replace."""
+    stored_id = str(stored or "").strip()
+    name = str(original or stored_id).strip() or stored_id
+    if not isinstance(row, dict) or not stored_id:
+        return ""
+    if field == "theory":
+        files = normalize_theory_files(row)
+        if any(item["id"] == stored_id for item in files):
+            sync_theory_files(row, files)
+            return ""
+        if len(files) >= MAX_THEORY_FILES:
+            raise ValueError("В теоретический материал можно прикрепить не больше 12 файлов")
+        files.append({"id": stored_id, "name": name})
+        sync_theory_files(row, files)
+        return ""
+    old_id = str(row.get(f"{field}FileId") or "")
+    row[f"{field}FileId"] = stored_id
+    row[f"{field}FileName"] = name
+    return old_id
+
+
+def detach_row_file(row: dict, field: str, file_id: str | None = None) -> str:
+    if not isinstance(row, dict):
+        return ""
+    if field == "theory":
+        files = normalize_theory_files(row)
+        wanted = str(file_id or "").strip()
+        if wanted:
+            kept = [item for item in files if item["id"] != wanted]
+            removed = wanted if len(kept) != len(files) else ""
+        else:
+            removed = files[-1]["id"] if files else ""
+            kept = files[:-1]
+        sync_theory_files(row, kept)
+        return removed
+    old_id = str(row.get(f"{field}FileId") or "")
+    row[f"{field}FileId"] = ""
+    row[f"{field}FileName"] = ""
+    return old_id
+
+
+def iter_row_file_ids(row: dict | None):
+    if not isinstance(row, dict):
+        return
+    seen = set()
+    for key in FILE_KEYS:
+        if not str(key).endswith("FileId"):
+            continue
+        file_id = str(row.get(key) or "").strip()
+        if file_id and file_id not in seen:
+            seen.add(file_id)
+            yield file_id
+    for item in normalize_theory_files(row):
+        file_id = item["id"]
+        if file_id not in seen:
+            seen.add(file_id)
+            yield file_id
 
 
 def last_weekday_in_may(year: int, weekday: int) -> date:
@@ -351,6 +459,7 @@ def apply_schedule(
             row[field] = str(prev.get(field) or "")
         if row["lessonStatus"] not in LESSON_STATUSES:
             row["lessonStatus"] = ""
+        sync_theory_files(row, normalize_theory_files(prev))
         row["extraLesson"] = False
         new_rows.append(row)
     student["rows"] = merge_extra_lessons(new_rows, extras, old_rows)
@@ -406,9 +515,14 @@ def clean_rows(
                 item[key] = str(row.get(key) or "")
             else:
                 item[key] = str(prev.get(key) or "")
+        if "theoryFiles" in row or "theoryFileId" in row:
+            sync_theory_files(item, normalize_theory_files(row))
+        else:
+            sync_theory_files(item, normalize_theory_files(prev))
         if student_locked:
             for key in ("topic", "theory", "homework", "comment", "bankId", "importedSource", *FILE_KEYS):
                 item[key] = str(prev.get(key, "") or "")
+            sync_theory_files(item, normalize_theory_files(prev))
         if item["bankId"]:
             item["practice"] = ""
             item["progress"] = ""
@@ -447,6 +561,7 @@ def copy_lesson_row(source: dict | None, target: dict | None) -> dict:
     status = str(source.get("lessonStatus") or "")
     copied["lessonStatus"] = status if status in LESSON_STATUSES else ""
     copied["extraLesson"] = kept_extra
+    sync_theory_files(copied, normalize_theory_files(source))
     target.clear()
     target.update(copied)
     return target
@@ -694,6 +809,7 @@ def _public_student(student: dict) -> dict:
         item["importedSource"] = str(row.get("importedSource") or "")
         for key in FILE_KEYS:
             item[key] = str(row.get(key) or "")
+        sync_theory_files(item, normalize_theory_files(row))
         if item["bankId"]:
             if item["bankId"] not in bank_cache:
                 bank_cache[item["bankId"]] = load_bank(item["bankId"])

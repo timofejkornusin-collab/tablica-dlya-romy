@@ -252,6 +252,7 @@ function copyableRowSnapshot(row) {
     copy[key] = String(source[key] || "");
   });
   copy.lessonStatus = source.lessonStatus === "held" || source.lessonStatus === "missed" ? source.lessonStatus : "";
+  copy.theoryFiles = rowTheoryFiles(source).map((item) => ({ id: item.id, name: item.name }));
   return copy;
 }
 
@@ -288,7 +289,23 @@ function emptyRow() {
     practiceFileName: "",
     importedSource: "",
     extraLesson: false,
+    theoryFiles: [],
   };
+}
+
+function rowTheoryFiles(row) {
+  const list = Array.isArray(row && row.theoryFiles) ? row.theoryFiles : [];
+  const fromList = list
+    .map((item) => ({
+      id: String((item && (item.id || item.fileId)) || ""),
+      name: String((item && item.name) || ""),
+    }))
+    .filter((item) => item.id)
+    .map((item) => ({ id: item.id, name: item.name || item.id }));
+  if (fromList.length) return fromList;
+  const id = String((row && row.theoryFileId) || "");
+  if (!id) return [];
+  return [{ id, name: String((row && row.theoryFileName) || id) }];
 }
 
 function isTeacherAccount() {
@@ -1357,6 +1374,7 @@ function rowHasLessonContent(row) {
   }
   if (String(row.bankId || "").trim()) return true;
   if (String(row.theoryFileId || "").trim()) return true;
+  if (Array.isArray(row.theoryFiles) && row.theoryFiles.some((item) => item && item.id)) return true;
   if (String(row.homeworkFileId || "").trim()) return true;
   return false;
 }
@@ -1879,27 +1897,56 @@ async function importLinkedPdfs(student) {
 function renderMaterialCell(row, rowIndex, column) {
   const field = column.key;
   const value = String(row[field] ?? "");
-  const fileId = row[`${field}FileId`] || "";
+  const theoryFiles = field === "theory" ? rowTheoryFiles(row) : [];
+  const fileId = field === "theory" ? "" : row[`${field}FileId`] || "";
   const fileName = row[`${field}FileName`] || "";
-  const fileLink = fileId
-    ? `<a class="file-open" href="${escapeHtml(fileUrl(fileId, fileName || fileId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
-        fileName || "открыть"
-      )}</a>`
-    : "";
+  const fileChips =
+    field === "theory"
+      ? theoryFiles
+          .map(
+            (file) => `<span class="file-chip">
+                <a class="file-open" href="${escapeHtml(fileUrl(file.id, file.name || file.id))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+                  file.name || "открыть"
+                )}</a>
+                ${
+                  isTeacherUi()
+                    ? `<button class="file-remove" type="button" data-row="${rowIndex}" data-field="theory" data-file-id="${escapeHtml(
+                        file.id
+                      )}" title="Убрать" aria-label="Убрать ${escapeHtml(file.name || "файл")}">×</button>`
+                    : ""
+                }
+              </span>`
+          )
+          .join("")
+      : fileId
+        ? `<a class="file-open" href="${escapeHtml(fileUrl(fileId, fileName || fileId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+            fileName || "открыть"
+          )}</a>`
+        : "";
   if (isStudentView()) {
     const text = linkifyText(value);
-    const body = text || fileLink ? `${text ? `<div class="material-text">${text}</div>` : ""}${fileLink}` : "—";
+    const files = fileChips || (fileId
+      ? `<a class="file-open" href="${escapeHtml(fileUrl(fileId, fileName || fileId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+          fileName || "открыть"
+        )}</a>`
+      : "");
+    const body = text || files ? `${text ? `<div class="material-text">${text}</div>` : ""}${files}` : "—";
     return `<td class="${column.className}" data-label="${escapeHtml(column.label)}"><div class="material-cell student-material">${body}</div></td>`;
   }
   const placeholder = 'placeholder="файл или заметка"';
-  const attach = `<label class="file-corner" title="Прикрепить документ">
+  const multiple = field === "theory" ? "multiple" : "";
+  const attachTitle = field === "theory" && theoryFiles.length ? "Прикрепить ещё документ" : "Прикрепить документ";
+  const attach = `<label class="file-corner" title="${attachTitle}">
       <span class="file-corner-mark" aria-hidden="true">+</span>
-      <input type="file" class="visually-hidden" data-row="${rowIndex}" data-field="${field}" />
+      <input type="file" class="visually-hidden" data-row="${rowIndex}" data-field="${field}" ${multiple} />
     </label>`;
-  const remove = fileId
-    ? `<button class="file-remove" type="button" data-row="${rowIndex}" data-field="${field}">Убрать</button>`
-    : "";
-  const tools = fileId ? `<div class="material-tools">${fileLink}${remove}</div>` : "";
+  const remove =
+    field === "theory"
+      ? ""
+      : fileId
+        ? `<button class="file-remove" type="button" data-row="${rowIndex}" data-field="${field}">Убрать</button>`
+        : "";
+  const tools = fileChips || fileId ? `<div class="material-tools">${fileChips}${remove}</div>` : "";
   return `<td class="${column.className}" data-label="${escapeHtml(column.label)}">
     <div class="material-cell">
       <textarea class="cell-fill" data-row="${rowIndex}" data-key="${field}" rows="1" spellcheck="false" ${placeholder}>${escapeHtml(value)}</textarea>
@@ -2169,40 +2216,51 @@ els.tableView.addEventListener("input", (event) => {
 els.tableView.addEventListener("change", (event) => {
   const fileInput = event.target.closest("input[type='file'][data-field]");
   if (fileInput) {
-    const file = fileInput.files && fileInput.files[0];
+    const files = Array.from((fileInput.files && fileInput.files) || []);
+    const field = fileInput.dataset.field;
+    const row = fileInput.dataset.row;
     fileInput.value = "";
-    if (!file || !isTeacherUi()) return;
+    if (!files.length || !isTeacherUi()) return;
     const student = currentStudent();
     if (!student) return;
-    const body = new FormData();
-    body.append("studentId", student.id);
-    body.append("row", fileInput.dataset.row);
-    body.append("field", fileInput.dataset.field);
-    body.append("file", file);
-    setSaveStatus("Загружаю файл…");
+    const uploadOne = (file) => {
+      const body = new FormData();
+      body.append("studentId", student.id);
+      body.append("row", row);
+      body.append("field", field);
+      body.append("file", file);
+      return fetch("/api/upload", { method: "POST", body, credentials: "same-origin", cache: "no-store" }).then(
+        async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || "Не удалось загрузить файл");
+          return data;
+        }
+      );
+    };
+    setSaveStatus(files.length > 1 ? "Загружаю файлы…" : "Загружаю файл…");
     persistCurrent()
-      .then(() =>
-        fetch("/api/upload", { method: "POST", body, credentials: "same-origin", cache: "no-store" })
-      )
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "Не удалось загрузить файл");
-        replaceStudent(data.student);
+      .then(async () => {
+        let last = null;
+        for (const file of files) {
+          last = await uploadOne(file);
+          if (last && last.student) replaceStudent(last.student);
+        }
         await loadBanks();
         renderTable();
-        if (data.importError) {
-          setSaveStatus(data.importError);
-          alert(data.importError);
-        } else if (data.total) {
-          setSaveStatus(`Готово: ${data.total} заданий из PDF`);
+        if (last && last.importError) {
+          setSaveStatus(last.importError);
+          alert(last.importError);
+        } else if (last && last.total) {
+          setSaveStatus(`Готово: ${last.total} заданий из PDF`);
         } else {
-          setSaveStatus("Файл прикреплён");
+          setSaveStatus(files.length > 1 ? "Файлы прикреплены" : "Файл прикреплён");
         }
       })
       .catch((error) => {
         const friendly = friendlyNetworkError(error);
         setSaveStatus(friendly.message);
         alert(friendly.message);
+        renderTable();
       });
     return;
   }
@@ -2282,6 +2340,7 @@ els.tableView.addEventListener("click", async (event) => {
         studentId: student.id,
         row: Number(remove.dataset.row),
         field: remove.dataset.field,
+        fileId: remove.dataset.fileId || "",
       }),
     })
       .then((data) => {

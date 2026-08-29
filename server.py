@@ -299,8 +299,12 @@ def row_upload_ids(rows) -> set[str]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        for key in id_keys:
-            file_id = safe_upload_id(str(row.get(key) or ""))
+        raw_ids = list(journal.iter_row_file_ids(row)) if hasattr(journal, "iter_row_file_ids") else []
+        if not raw_ids:
+            for key in id_keys:
+                raw_ids.append(str(row.get(key) or ""))
+        for raw in raw_ids:
+            file_id = safe_upload_id(str(raw or ""))
             if file_id:
                 result.add(file_id)
     return result
@@ -1486,9 +1490,13 @@ class Handler(SimpleHTTPRequestHandler):
                 dest.unlink(missing_ok=True)
                 self._send_json({"ok": False, "error": "Строка не найдена"}, 400)
                 return
-            old_id = safe_upload_id(str(rows[row_index].get(f"{field}FileId") or ""))
-            rows[row_index][f"{field}FileId"] = stored
-            rows[row_index][f"{field}FileName"] = original
+            try:
+                old_id = journal.attach_row_file(rows[row_index], field, stored, original)
+            except ValueError as exc:
+                dest.unlink(missing_ok=True)
+                self._send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            old_id = safe_upload_id(str(old_id or ""))
             if parsed_bank:
                 try:
                     journal.save_bank(parsed_bank)
@@ -1536,9 +1544,9 @@ class Handler(SimpleHTTPRequestHandler):
             if row_index < 0 or row_index >= len(rows) or not isinstance(rows[row_index], dict):
                 self._send_json({"ok": False, "error": "Строка не найдена"}, 400)
                 return
-            old_id = safe_upload_id(str(rows[row_index].get(f"{field}FileId") or ""))
-            rows[row_index][f"{field}FileId"] = ""
-            rows[row_index][f"{field}FileName"] = ""
+            old_id = safe_upload_id(
+                str(journal.detach_row_file(rows[row_index], field, payload.get("fileId")) or "")
+            )
             save_data(data)
             if old_id and not upload_is_referenced(data, old_id):
                 (UPLOADS_DIR / old_id).unlink(missing_ok=True)

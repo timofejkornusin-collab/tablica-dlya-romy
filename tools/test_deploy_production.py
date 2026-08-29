@@ -37,7 +37,7 @@ class DeployProductionTest(unittest.TestCase):
         (self.stage / "tools").mkdir(parents=True)
         shutil.copy2(ROOT / "tools" / "production_students_safety.py", self.stage / "tools" / "production_students_safety.py")
         (self.stage / "journal.py").write_text(
-            "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\ndef public_student_summary(student):\n    return student\ndef purge_bank(data, bank_id):\n    return ''\n",
+            "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\ndef public_student_summary(student):\n    return student\ndef purge_bank(data, bank_id):\n    return ''\ndef attach_row_file(row, field, stored, original):\n    return ''\nMAX_THEORY_FILES = 12\n",
             encoding="utf-8",
         )
         (self.stage / "pdf_import.py").write_text("VALUE = 'stage-pdf'\n", encoding="utf-8")
@@ -46,7 +46,7 @@ class DeployProductionTest(unittest.TestCase):
             "function restorePracticeScroll() {}\nconst keepScroll = true;\n"
             "function applyCopiedTable() {}\nfunction applyCopiedRow() {}\nfunction bumpSaveEpoch() {}\n"
             "function syncStartDateWeekday() {}\nconst keepRicher = true;\n"
-            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\n",
+            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "practice-page.js").write_text(
@@ -94,9 +94,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=bank-solid1", text)
+        self.assertIn("styles.css?v=theory-multi1", text)
         self.assertIn("mobile.css?v=row-copy1", text)
-        self.assertIn("app.js?v=bank-solid1", text)
+        self.assertIn("app.js?v=theory-multi1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
@@ -163,6 +163,28 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn('if field == "practice":', text)
         self.assertNotIn('or not str(rows[row_index].get("bankId")', text)
 
+    def test_patch_server_appends_theory_files(self) -> None:
+        deploy = load_deploy()
+        path = self.app / "server.py"
+        path.write_text(
+            "PORT = 8765\n"
+            "class H:\n"
+            "    def m(self, rows, row_index, field, stored, original, payload):\n"
+            "            old_id = safe_upload_id(str(rows[row_index].get(f\"{field}FileId\") or \"\"))\n"
+            "            rows[row_index][f\"{field}FileId\"] = stored\n"
+            "            rows[row_index][f\"{field}FileName\"] = original\n"
+            "            old_id = safe_upload_id(str(rows[row_index].get(f\"{field}FileId\") or \"\"))\n"
+            "            rows[row_index][f\"{field}FileId\"] = \"\"\n"
+            "            rows[row_index][f\"{field}FileName\"] = \"\"\n",
+            encoding="utf-8",
+        )
+        deploy.patch_server(path)
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("journal.attach_row_file", text)
+        self.assertIn("journal.detach_row_file", text)
+        self.assertNotIn('[f"{field}FileId"] = stored', text)
+        self.assertNotIn('[f"{field}FileName"] = ""', text)
+
     def test_patch_server_always_installs_students_handler(self) -> None:
         deploy = load_deploy()
         path = self.app / "server.py"
@@ -190,7 +212,7 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("journal-students-safety-begin", server_text)
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("bank-solid1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("theory-multi1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 
