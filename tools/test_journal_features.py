@@ -297,6 +297,22 @@ class ExtraLessonTest(unittest.TestCase):
         self.assertIn("extra-lesson", (ROOT / "static" / "styles.css").read_text(encoding="utf-8"))
 
 
+class QuietUiTest(unittest.TestCase):
+    def test_list_hides_subtitle_login_and_saved_status(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        index_html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function hideUnwantedLabels()", app_js)
+        self.assertIn("function setPageSubtitle(", app_js)
+        self.assertIn('setPageSubtitle("")', app_js)
+        self.assertNotIn("Подготовка к экзаменам и уроки", app_js)
+        self.assertNotIn("логин: ${escapeHtml(student.login)}", app_js)
+        self.assertIn('value === "Сохранено"', app_js)
+        self.assertIn(".card-login {\n  display: none;\n}", styles)
+        self.assertIn(".save-status:empty", styles)
+        self.assertIn('id="page-subtitle" class="subtitle hidden"', index_html)
+
+
 class StudentsApiSafetyTest(unittest.TestCase):
     def test_public_student_survives_broken_rows_and_progress(self) -> None:
         student = {

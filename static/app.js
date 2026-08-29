@@ -509,7 +509,29 @@ function currentStudent() {
 }
 
 function setSaveStatus(text) {
-  els.saveStatus.textContent = text;
+  if (!els.saveStatus) return;
+  const value = String(text || "").trim();
+  if (!value || value === "Сохранено" || value === "Сохранение…") {
+    els.saveStatus.textContent = "";
+    return;
+  }
+  els.saveStatus.textContent = value;
+}
+
+function setPageSubtitle(text) {
+  if (!els.pageSubtitle) return;
+  const value = String(text || "").trim();
+  els.pageSubtitle.textContent = value;
+  els.pageSubtitle.classList.toggle("hidden", !value);
+}
+
+function hideUnwantedLabels() {
+  document.querySelectorAll(".card-login").forEach((node) => node.remove());
+  if (!els.pageSubtitle) return;
+  const text = String(els.pageSubtitle.textContent || "");
+  if (/Подготовка к экзаменам|10\s*[–-]\s*11\s*класс/i.test(text)) {
+    setPageSubtitle("");
+  }
 }
 
 function weekdaySelect(id, selected) {
@@ -1114,7 +1136,8 @@ function renderList() {
   if (els.settingsBtn) els.settingsBtn.classList.add("hidden");
   if (isTeacherUi()) els.addStudentBtn.classList.remove("hidden");
   els.pageTitle.textContent = "Журнал занятий";
-  els.pageSubtitle.textContent = "Русский язык · 10–11 классы · Подготовка к экзаменам и уроки";
+  setPageSubtitle("");
+  hideUnwantedLabels();
   updateModeChrome();
   updateShareBar();
 
@@ -1138,7 +1161,6 @@ function renderList() {
             <div>
               <h2>${escapeHtml(student.name)}</h2>
               <span class="badge">${TEMPLATE_LABELS[student.template] || TEMPLATE_LABELS.once}</span>
-              ${student.login ? `<p class="card-login">логин: ${escapeHtml(student.login)}</p>` : ""}
             </div>
           </div>
           <div class="card-actions">
@@ -1253,9 +1275,11 @@ function renderTable() {
   }
   updateTableCopyButtons();
   els.pageTitle.textContent = student.name;
-  els.pageSubtitle.textContent = isStudentView()
-    ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
-    : "Между уроками нажмите «+»: появится отдельный урок, дату ставит педагог, остальные даты не сдвигаются. «Найти» открывает строку по дате.";
+  setPageSubtitle(
+    isStudentView()
+      ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
+      : "Между уроками нажмите «+»: появится отдельный урок, дату ставит педагог, остальные даты не сдвигаются. «Найти» открывает строку по дате."
+  );
   updateModeChrome();
   updateShareBar();
 
@@ -1481,9 +1505,7 @@ async function openPractice(bankId, options = {}) {
   els.backBtn.classList.remove("hidden");
   els.backBtn.textContent = "← К таблице";
   els.pageTitle.textContent = data.title;
-  els.pageSubtitle.textContent = isStudentView()
-    ? `${student.name}. Впишите номера рядов и нажмите «Сохранить».`
-    : student.name;
+  setPageSubtitle(isStudentView() ? `${student.name}. Впишите номера рядов и нажмите «Сохранить».` : student.name);
   updateModeChrome();
   updateShareBar();
   renderPractice();
@@ -2325,6 +2347,7 @@ function startErrorHtml(error) {
 async function start() {
   loadTableClipboard();
   loadRowClipboard();
+  hideUnwantedLabels();
   try {
     const session = await loadSession();
     if (!session.user) {

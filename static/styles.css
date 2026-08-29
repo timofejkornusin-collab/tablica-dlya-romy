@@ -257,6 +257,10 @@ h1 {
   font-weight: 500;
 }
 
+.save-status:empty {
+  display: none;
+}
+
 /* PREVIEW BANNER */
 .preview-banner {
   background: var(--navy);
@@ -1423,9 +1427,7 @@ textarea {
 }
 
 .card-login {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 0.82rem;
+  display: none;
 }
 
 .created-box {

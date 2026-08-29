@@ -29,6 +29,7 @@ class PracticeScrollTest(unittest.TestCase):
         self.assertIn("importLinkedPdfs", app_js)
         self.assertIn("ensureEndDateField", app_js)
         self.assertIn("trimRowsToScheduleEnd", app_js)
+        self.assertIn("hideUnwantedLabels", app_js)
         self.assertIn("extraLessonRow", app_js)
 
         self.assertNotIn("scrollTop = 0", page_js)
