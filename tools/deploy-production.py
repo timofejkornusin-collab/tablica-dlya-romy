@@ -69,9 +69,9 @@ APP_MARKERS = (
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=students-fix2",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=students-fix3",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=row-copy1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=students-fix2",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=students-fix3",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
@@ -184,12 +184,18 @@ SAFETY_INSTALL = """
 
 %s
 try:
+    import sys as _journal_sys
+    from pathlib import Path as _journal_Path
+    _journal_root = str(_journal_Path(__file__).resolve().parent)
+    if _journal_root not in _journal_sys.path:
+        _journal_sys.path.insert(0, _journal_root)
     import production_students_safety as _journal_students_safety
     _journal_students_safety.install(globals())
 except Exception:
     pass
 %s
 """ % (SAFETY_BEGIN, SAFETY_END)
+MAIN_GUARD_RE = re.compile(r"\nif __name__ == [\"']__main__[\"']:")
 
 
 def strip_server_safety(text: str) -> str:
@@ -201,11 +207,19 @@ def strip_server_safety(text: str) -> str:
     )
 
 
+def insert_safety_block(text: str) -> str:
+    text = strip_server_safety(text)
+    match = MAIN_GUARD_RE.search(text)
+    if match:
+        return text[: match.start()] + SAFETY_INSTALL + text[match.start() :]
+    return text.rstrip() + SAFETY_INSTALL
+
+
 def patch_server(path: Path) -> None:
     """Keep production server.py, but take over GET /api/students safely."""
     if not path.is_file():
         return
-    text = strip_server_safety(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
     text = text.replace(UNSAFE_END_FROM_PAYLOAD, SAFE_END_FROM_PAYLOAD)
     text = text.replace(
         'journal.end_from_payload(payload, start, slots, student.get("schedule"))',
@@ -214,7 +228,7 @@ def patch_server(path: Path) -> None:
     text, _count = APPLY_SCHEDULE_RE.subn(APPLY_SCHEDULE_WITH_END, text)
     text, _students = STUDENTS_LIST_RE.subn("journal.public_students_payload(data.get('students'))", text)
     text, _dumps = JSON_DUMPS_RE.subn(SAFE_JSON_DUMPS, text)
-    text = text.rstrip() + SAFETY_INSTALL
+    text = insert_safety_block(text)
     path.write_text(text, encoding="utf-8")
     py_compile.compile(str(path), doraise=True)
 
@@ -286,7 +300,11 @@ def require_python_and_markers() -> None:
     if "scrollTop = 0" in page_js or "scrollTop=0" in page_js:
         fail("ОШИБКА: practice-page.js снова сбрасывает прокрутку. Сайт не изменён.")
     journal_py = (STAGE / "journal.py").read_text(encoding="utf-8", errors="replace")
-    if "end_date_from_request_payload" not in journal_py or "public_students_payload" not in journal_py:
+    if (
+        "end_date_from_request_payload" not in journal_py
+        or "public_students_payload" not in journal_py
+        or "public_student_summary" not in journal_py
+    ):
         fail("ОШИБКА: загружена не та версия journal.py. Сайт не изменён.")
 
 
@@ -334,7 +352,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "students-fix2" in installed_index else "0"
+    index_marker = "1" if "students-fix3" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -346,7 +364,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("students-fix2"))
+        index_marker = str(live_index.count("students-fix3"))
         api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)

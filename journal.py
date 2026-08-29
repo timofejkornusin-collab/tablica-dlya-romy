@@ -690,6 +690,11 @@ def _public_student(student: dict) -> dict:
     return payload
 
 
+def public_student_summary(student: dict | None) -> dict | None:
+    """List payload used by production server.py GET /api/students."""
+    return public_student(student)
+
+
 def public_students_payload(students) -> dict:
     items = []
     if not isinstance(students, list):

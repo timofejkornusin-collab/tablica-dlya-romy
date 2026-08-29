@@ -368,6 +368,9 @@ class StudentsApiSafetyTest(unittest.TestCase):
         self.assertIsNone(journal.public_student("рома"))
         self.assertIsNone(journal.public_student(None))
         self.assertIsNone(journal.public_student({}))
+        student = {"id": "x", "name": "Т", "rows": [journal.empty_row("03.09.2026, 16:00")]}
+        self.assertEqual(journal.public_student_summary(student)["name"], "Т")
+        self.assertEqual(journal.public_student_summary(student)["rows"][0]["date"], "03.09.2026, 16:00")
 
 
 class TableCopyTest(unittest.TestCase):

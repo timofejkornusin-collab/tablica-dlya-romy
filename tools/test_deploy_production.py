@@ -37,7 +37,7 @@ class DeployProductionTest(unittest.TestCase):
         (self.stage / "tools").mkdir(parents=True)
         shutil.copy2(ROOT / "tools" / "production_students_safety.py", self.stage / "tools" / "production_students_safety.py")
         (self.stage / "journal.py").write_text(
-            "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\n",
+            "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\ndef public_student_summary(student):\n    return student\n",
             encoding="utf-8",
         )
         (self.stage / "pdf_import.py").write_text("VALUE = 'stage-pdf'\n", encoding="utf-8")
@@ -94,9 +94,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=students-fix2", text)
+        self.assertIn("styles.css?v=students-fix3", text)
         self.assertIn("mobile.css?v=row-copy1", text)
-        self.assertIn("app.js?v=students-fix2", text)
+        self.assertIn("app.js?v=students-fix3", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
@@ -168,7 +168,7 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("journal-students-safety-begin", server_text)
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("students-fix2", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("students-fix3", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 
@@ -268,6 +268,19 @@ class ProductionStudentsSafetyTest(unittest.TestCase):
         deploy.patch_server(path)
         text = path.read_text(encoding="utf-8")
         self.assertEqual(text.count("journal-students-safety-begin"), 1)
+        self._temp.cleanup()
+
+    def test_safety_installs_before_main_guard(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        path = Path(self._temp.name) / "server.py"
+        path.write_text(
+            "PORT = 8765\n\ndef main():\n    pass\n\nif __name__ == '__main__':\n    main()\n",
+            encoding="utf-8",
+        )
+        deploy = load_deploy()
+        deploy.patch_server(path)
+        text = path.read_text(encoding="utf-8")
+        self.assertLess(text.index("journal-students-safety-begin"), text.index("if __name__ == '__main__':"))
         self._temp.cleanup()
 
 
