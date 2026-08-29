@@ -1726,10 +1726,7 @@ function renderMaterialCell(row, rowIndex, column) {
     const body = text || fileLink ? `${text ? `<div class="material-text">${text}</div>` : ""}${fileLink}` : "—";
     return `<td class="${column.className}" data-label="${escapeHtml(column.label)}"><div class="material-cell student-material">${body}</div></td>`;
   }
-  const placeholder =
-    field === "theory"
-      ? 'placeholder="заметка или ссылка на документ"'
-      : 'placeholder="домашнее задание, ссылка на PDF или файл"';
+  const placeholder = 'placeholder="файл или заметка"';
   const attach = `<label class="file-corner" title="Прикрепить документ">
       <span class="file-corner-mark" aria-hidden="true">+</span>
       <input type="file" class="visually-hidden" data-row="${rowIndex}" data-field="${field}" />

@@ -313,6 +313,15 @@ class QuietUiTest(unittest.TestCase):
         self.assertIn('id="page-subtitle" class="subtitle hidden"', index_html)
 
 
+class MaterialPlaceholderTest(unittest.TestCase):
+    def test_theory_and_homework_share_file_or_note_placeholder(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('placeholder="файл или заметка"', app_js)
+        self.assertNotIn("заметка или ссылка на документ", app_js)
+        self.assertNotIn("домашнее задание, ссылка на PDF или файл", app_js)
+        self.assertEqual(app_js.count('placeholder="файл или заметка"'), 1)
+
+
 class StudentsApiSafetyTest(unittest.TestCase):
     def test_public_student_survives_broken_rows_and_progress(self) -> None:
         student = {
