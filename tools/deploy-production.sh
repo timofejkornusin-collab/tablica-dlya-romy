@@ -129,8 +129,8 @@ path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
 replacements = {
-    r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=hide-share1',
-    r'mobile\.css(?:\?v=[^"]*)?': 'mobile.css?v=phone-cards1',
+    r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=theory-grow1',
+    r'mobile\.css(?:\?v=[^"]*)?': 'mobile.css?v=theory-grow1',
     r'app\.js(?:\?v=[^"]*)?': 'app.js?v=hide-share1',
     r'practice-page\.js(?:\?v=[^"]*)?': 'practice-page.js?v=2',
     r'practice-scales\.css(?:\?v=[^"]*)?': 'practice-scales.css?v=2',

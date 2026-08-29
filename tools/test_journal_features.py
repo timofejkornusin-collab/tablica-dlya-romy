@@ -337,7 +337,7 @@ class StudentTableCellsTest(unittest.TestCase):
         self.assertIn(".teacher-table .lesson-held td.col-date", styles)
         self.assertIn(".teacher-table .lesson-missed td.col-date", styles)
         self.assertNotIn("\n.lesson-held td.col-date {", styles)
-        self.assertIn("phone-cards1", (ROOT / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("theory-grow1", (ROOT / "static" / "index.html").read_text(encoding="utf-8"))
 
 
 class MobileAttachButtonTest(unittest.TestCase):
@@ -667,6 +667,12 @@ class TheoryFilesTest(unittest.TestCase):
         self.assertIn(".file-chip", styles)
         self.assertIn("attach_row_file", (ROOT / "journal.py").read_text(encoding="utf-8"))
         self.assertIn("journal.attach_row_file", (ROOT / "server.py").read_text(encoding="utf-8"))
+        self.assertIn("min-height: 148px", styles)
+        self.assertNotIn("max-height: 46%", styles)
+        self.assertIn("td {\n  padding: 0;\n  background: #ffffff;\n  height: auto;", styles)
+        self.assertIn("content: none !important", styles)
+        self.assertIn(".file-chip .file-remove::after", styles)
+        self.assertIn("max-height: none !important", (ROOT / "static" / "mobile.css").read_text(encoding="utf-8"))
 
 
 class BankKeyTest(unittest.TestCase):
