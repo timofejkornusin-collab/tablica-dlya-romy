@@ -311,6 +311,9 @@ class QuietUiTest(unittest.TestCase):
         self.assertIn(".card-login {\n  display: none;\n}", styles)
         self.assertIn(".save-status:empty", styles)
         self.assertIn('id="page-subtitle" class="subtitle hidden"', index_html)
+        self.assertIn('if (els.shareBar) els.shareBar.classList.add("hidden")', app_js)
+        self.assertNotIn('els.shareBar.classList.remove("hidden")', app_js)
+        self.assertIn(".share-bar {\n  display: none !important;\n}", styles)
 
 
 class MaterialPlaceholderTest(unittest.TestCase):

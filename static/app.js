@@ -544,6 +544,7 @@ function setPageSubtitle(text) {
 
 function hideUnwantedLabels() {
   document.querySelectorAll(".card-login").forEach((node) => node.remove());
+  if (els.shareBar) els.shareBar.classList.add("hidden");
   if (!els.pageSubtitle) return;
   const text = String(els.pageSubtitle.textContent || "");
   if (/Подготовка к экзаменам|10\s*[–-]\s*11\s*класс/i.test(text)) {
@@ -623,21 +624,7 @@ async function loadBanks() {
 }
 
 function updateShareBar() {
-  if (state.view === "practice" || isStudentView()) {
-    els.shareBar.classList.add("hidden");
-    return;
-  }
-  els.shareBar.classList.remove("hidden");
-  if (state.publicUrl) {
-    els.shareUrl.textContent = state.publicUrl;
-    els.shareHint.textContent = "Эту ссылку можно открыть с телефона из любой сети. Вводите http://, не https://.";
-  } else if (state.tunnelError) {
-    els.shareUrl.textContent = state.tunnelError;
-    els.shareHint.textContent = "Интернет-ссылка пока не готова. Не закрывайте окно запуска и обновите страницу через минуту.";
-  } else {
-    els.shareUrl.textContent = "Готовится… подождите 10–20 секунд, окно запуска не закрывайте";
-    els.shareHint.textContent = "Сначала появится интернет-ссылка. Вводите http://, не https://.";
-  }
+  if (els.shareBar) els.shareBar.classList.add("hidden");
 }
 
 function showApp() {
@@ -2431,19 +2418,21 @@ els.practiceView.addEventListener("click", async (event) => {
   }
 });
 
-els.copyLinkBtn.addEventListener("click", async () => {
-  const text = state.publicUrl;
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    els.copyLinkBtn.textContent = "Скопировано";
-    setTimeout(() => {
-      els.copyLinkBtn.textContent = "Копировать интернет-ссылку";
-    }, 1500);
-  } catch (_error) {
-    prompt("Скопируйте ссылку:", text);
-  }
-});
+if (els.copyLinkBtn) {
+  els.copyLinkBtn.addEventListener("click", async () => {
+    const text = state.publicUrl;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      els.copyLinkBtn.textContent = "Скопировано";
+      setTimeout(() => {
+        els.copyLinkBtn.textContent = "Копировать интернет-ссылку";
+      }, 1500);
+    } catch (_error) {
+      prompt("Скопируйте ссылку:", text);
+    }
+  });
+}
 
 if (els.copyCredsBtn) {
   els.copyCredsBtn.addEventListener("click", async () => {
