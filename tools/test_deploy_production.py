@@ -46,7 +46,7 @@ class DeployProductionTest(unittest.TestCase):
             "function restorePracticeScroll() {}\nconst keepScroll = true;\n"
             "function applyCopiedTable() {}\nfunction applyCopiedRow() {}\nfunction bumpSaveEpoch() {}\n"
             "function syncStartDateWeekday() {}\nconst keepRicher = true;\n"
-            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\n",
+            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "practice-page.js").write_text(
@@ -94,9 +94,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=theory-multi1", text)
+        self.assertIn("styles.css?v=student-cells1", text)
         self.assertIn("mobile.css?v=row-copy1", text)
-        self.assertIn("app.js?v=theory-multi1", text)
+        self.assertIn("app.js?v=student-cells1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
@@ -212,7 +212,7 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("journal-students-safety-begin", server_text)
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("theory-multi1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("student-cells1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 

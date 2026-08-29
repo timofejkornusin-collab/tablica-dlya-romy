@@ -322,6 +322,21 @@ class MaterialPlaceholderTest(unittest.TestCase):
         self.assertEqual(app_js.count('placeholder="файл или заметка"'), 1)
 
 
+class StudentTableCellsTest(unittest.TestCase):
+    def test_student_date_topic_comment_match_material_cells(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("function renderStudentTextCell(", app_js)
+        self.assertIn("return renderStudentTextCell(column, row.date || \"\", { extra: badge, linkify: false });", app_js)
+        self.assertIn("if (isStudentView()) {\n          return renderStudentTextCell(column, value);\n        }", app_js)
+        self.assertNotIn('const readonly = isStudentView() ? "readonly" : "";', app_js)
+        self.assertIn(".student-material {\n  padding: 12px;\n  gap: 8px;\n  display: flex;\n  flex-direction: column;\n  color: var(--ink);\n  font-size: 0.93rem;\n}", styles)
+        self.assertIn(".teacher-table .lesson-held td.col-date", styles)
+        self.assertIn(".teacher-table .lesson-missed td.col-date", styles)
+        self.assertNotIn("\n.lesson-held td.col-date {", styles)
+        self.assertIn("student-cells1", (ROOT / "static" / "index.html").read_text(encoding="utf-8"))
+
+
 class StudentsApiSafetyTest(unittest.TestCase):
     def test_public_student_survives_broken_rows_and_progress(self) -> None:
         student = {

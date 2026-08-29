@@ -1484,35 +1484,34 @@ function renderTable() {
       const cells = COLUMNS.map((column) => {
         if (column.key === "date") {
           const status = ["held", "missed"].includes(row.lessonStatus) ? row.lessonStatus : "";
-          const readonly = isStudentView() ? "readonly" : "";
-          const controls = isTeacherUi()
-            ? `<div class="lesson-status-controls" role="group" aria-label="Состоялось ли занятие">
+          if (isStudentView()) {
+            const badge = status
+              ? `<span class="lesson-status-badge status-${status}">${
+                  status === "held" ? "✓ Было занятие" : "× Занятия не было"
+                }</span>`
+              : "";
+            return renderStudentTextCell(column, row.date || "", { extra: badge, linkify: false });
+          }
+          const controls = `<div class="lesson-status-controls" role="group" aria-label="Состоялось ли занятие">
                 <button class="lesson-status-btn status-held" type="button" data-row="${rowIndex}" data-status="held" aria-pressed="${
                   status === "held"
                 }">Было</button>
                 <button class="lesson-status-btn status-missed" type="button" data-row="${rowIndex}" data-status="missed" aria-pressed="${
                   status === "missed"
                 }">Не было</button>
-              </div>`
-            : status
-              ? `<span class="lesson-status-badge status-${status}">${
-                  status === "held" ? "✓ Было занятие" : "× Занятия не было"
-                }</span>`
-              : "";
+              </div>`;
           const pasteReady = Boolean(state.rowClipboard && state.rowClipboard.row);
-          const rowTools = isTeacherUi()
-            ? `<div class="date-row-tools">
+          const rowTools = `<div class="date-row-tools">
                 <button class="row-copy-btn" type="button" data-row="${rowIndex}" title="Скопировать строку" aria-label="Скопировать строку">${ROW_COPY_ICON}</button>
                 <button class="row-paste-btn${pasteReady ? "" : " is-disabled"}" type="button" data-row="${rowIndex}" title="${
                   pasteReady ? "Вставить скопированную строку" : "Сначала скопируйте строку"
                 }" aria-label="Вставить строку">${ROW_PASTE_ICON}</button>
-              </div>`
-            : "";
+              </div>`;
           return `<td class="col-date" data-label="${escapeHtml(column.label)}">
             <div class="date-cell">
               <textarea class="cell-fill" data-row="${rowIndex}" data-key="date" rows="1" spellcheck="false" placeholder="${
                 row.extraLesson ? "дату ставит педагог, например 12.09.2026, 17:00" : "например 10.09.2026, 17:00"
-              }" ${readonly}>${escapeHtml(
+              }">${escapeHtml(
                 String(row.date || "")
               )}</textarea>
               <div class="date-cell-bottom">
@@ -1568,10 +1567,11 @@ function renderTable() {
           return renderMaterialCell(row, rowIndex, column);
         }
         const value = row[column.key] ?? "";
-        const locked = isStudentView();
-        const readonly = locked ? "readonly" : "";
+        if (isStudentView()) {
+          return renderStudentTextCell(column, value);
+        }
         return `<td class="${column.className}" data-label="${escapeHtml(column.label)}">
-          <textarea class="cell-fill" data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false" ${readonly}>${escapeHtml(
+          <textarea class="cell-fill" data-row="${rowIndex}" data-key="${column.key}" rows="1" spellcheck="false">${escapeHtml(
             String(value)
           )}</textarea>
         </td>`;
@@ -1892,6 +1892,17 @@ async function importLinkedPdfs(student) {
     }
   }
   return changed;
+}
+
+function renderStudentTextCell(column, value, options = {}) {
+  const extra = options.extra || "";
+  const raw = String(value ?? "");
+  const text =
+    options.linkify === false
+      ? (raw.trim() ? escapeHtml(raw).replaceAll("\n", "<br>") : "")
+      : linkifyText(raw);
+  const body = text ? `<div class="material-text">${text}</div>` : extra ? "" : "—";
+  return `<td class="${column.className}" data-label="${escapeHtml(column.label)}"><div class="material-cell student-material">${body}${extra}</div></td>`;
 }
 
 function renderMaterialCell(row, rowIndex, column) {

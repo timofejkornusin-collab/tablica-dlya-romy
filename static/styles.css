@@ -554,12 +554,12 @@ tbody tr:hover td {
   background-color: #fffefb;
 }
 
-.lesson-held td.col-date {
+.teacher-table .lesson-held td.col-date {
   background: var(--green-soft);
   box-shadow: inset 4px 0 0 var(--green);
 }
 
-.lesson-missed td.col-date {
+.teacher-table .lesson-missed td.col-date {
   background: var(--terracotta-soft);
   box-shadow: inset 4px 0 0 var(--terracotta);
 }
@@ -913,11 +913,19 @@ textarea:focus {
   gap: 8px;
   display: flex;
   flex-direction: column;
+  color: var(--ink);
+  font-size: 0.93rem;
 }
 
 .material-text {
   white-space: normal;
   line-height: 1.45;
+  color: var(--ink);
+}
+
+.student-material .lesson-status-badge {
+  margin: 0;
+  align-self: flex-start;
 }
 
 .student-material a {

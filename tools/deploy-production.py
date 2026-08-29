@@ -79,12 +79,13 @@ APP_MARKERS = (
     "bank-picker-list",
     "theoryFiles",
     "rowTheoryFiles",
+    "renderStudentTextCell",
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=theory-multi1",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=student-cells1",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=row-copy1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=theory-multi1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=student-cells1",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
@@ -416,7 +417,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "theory-multi1" in installed_index else "0"
+    index_marker = "1" if "student-cells1" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -428,7 +429,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("theory-multi1"))
+        index_marker = str(live_index.count("student-cells1"))
         api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)
