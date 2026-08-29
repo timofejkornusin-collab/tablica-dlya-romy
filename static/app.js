@@ -1219,41 +1219,90 @@ function bankPickerHtml(rowIndex, selected) {
       <span class="bank-picker-name">${escapeHtml(currentLabel)}</span>
       <span class="bank-picker-caret" aria-hidden="true">▾</span>
     </button>
-    <div class="bank-picker-menu hidden" data-row="${rowIndex}" role="listbox">${none}${rows}</div>
+    <div class="bank-picker-menu" popover="manual" data-row="${rowIndex}" role="listbox">${none}${rows}</div>
   </div>`;
+}
+
+function isBankMenuOpen(menu) {
+  if (!menu) return false;
+  try {
+    if (menu.matches(":popover-open")) return true;
+  } catch (_error) {
+    /* старый браузер без popover */
+  }
+  return menu.classList.contains("is-open");
 }
 
 function closeBankPickers() {
   document.querySelectorAll(".bank-picker-menu").forEach((menu) => {
-    menu.classList.add("hidden");
+    if (typeof menu.hidePopover === "function") {
+      try {
+        menu.hidePopover();
+      } catch (_error) {
+        /* меню уже закрыто */
+      }
+    }
+    menu.classList.remove("is-open");
     const picker = document.querySelector(`.bank-picker[data-row="${menu.dataset.row}"]`);
     if (picker && menu.parentElement !== picker) picker.appendChild(menu);
     menu.style.left = "";
     menu.style.top = "";
     menu.style.width = "";
+    menu.style.margin = "";
+    menu.style.inset = "";
   });
   document.querySelectorAll(".bank-picker-toggle").forEach((button) => button.setAttribute("aria-expanded", "false"));
 }
 
-function openBankPicker(picker) {
+let bankMenuIgnoreUntil = 0;
+
+function positionBankMenu(menu, anchor) {
+  if (!menu || !anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(Math.max(rect.width, 280), Math.max(160, window.innerWidth - 16));
+  const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+  menu.style.margin = "0";
+  menu.style.inset = "unset";
+  menu.style.position = "fixed";
+  menu.style.left = `${left}px`;
+  menu.style.width = `${width}px`;
+  const height = Math.min(280, menu.scrollHeight || 280);
+  const spaceBelow = window.innerHeight - rect.bottom;
+  if (spaceBelow < height + 8 && rect.top > spaceBelow) {
+    menu.style.top = `${Math.max(8, rect.top - height - 4)}px`;
+  } else {
+    menu.style.top = `${Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 48))}px`;
+  }
+}
+
+function openBankPicker(picker, anchor) {
+  if (!picker) return;
   const row = picker.dataset.row;
   const menu =
     picker.querySelector(".bank-picker-menu") || document.querySelector(`.bank-picker-menu[data-row="${row}"]`);
   const toggle = picker.querySelector(".bank-picker-toggle");
-  if (!menu || !toggle) return;
-  const already = !menu.classList.contains("hidden");
+  const pin = anchor || toggle;
+  if (!menu || !toggle || !pin) return;
+  const already = isBankMenuOpen(menu);
   closeBankPickers();
   if (already) return;
   menu.dataset.row = row;
-  document.body.appendChild(menu);
-  menu.classList.remove("hidden");
   toggle.setAttribute("aria-expanded", "true");
-  const rect = toggle.getBoundingClientRect();
-  const width = Math.min(Math.max(rect.width, 280), window.innerWidth - 16);
-  const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
-  menu.style.left = `${left}px`;
-  menu.style.top = `${rect.bottom + 4}px`;
-  menu.style.width = `${width}px`;
+  let shownAsPopover = false;
+  if (typeof menu.showPopover === "function") {
+    try {
+      menu.showPopover();
+      shownAsPopover = true;
+    } catch (_error) {
+      shownAsPopover = false;
+    }
+  }
+  menu.classList.add("is-open");
+  if (!shownAsPopover) {
+    document.body.appendChild(menu);
+  }
+  positionBankMenu(menu, pin);
+  bankMenuIgnoreUntil = Date.now() + 400;
 }
 
 function applyBankChoice(choice) {
@@ -1454,19 +1503,34 @@ function renderTable() {
           const fraction = row.bankId ? row.practice || "0/0" : "—";
           const teacherSelect = isTeacherUi() ? bankPickerHtml(rowIndex, row.bankId || "") : "";
           const attach = isTeacherUi()
-            ? `<label class="file-corner" title="Загрузить PDF с заданиями">
-                <span class="file-corner-mark" aria-hidden="true">+</span>
+            ? `<label class="practice-upload" title="Загрузить PDF с заданиями">
+                <span aria-hidden="true">+</span>
+                <span>PDF</span>
                 <input type="file" class="visually-hidden" accept="application/pdf,.pdf" data-row="${rowIndex}" data-field="practice" />
               </label>`
+            : "";
+          const practiceFile = row.practiceFileId
+            ? `<div class="material-tools">
+                <a class="file-open" href="${escapeHtml(fileUrl(row.practiceFileId, row.practiceFileName || row.practiceFileId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(
+                  row.practiceFileName || "открыть"
+                )}</a>
+                ${
+                  isTeacherUi()
+                    ? `<button class="file-remove" type="button" data-row="${rowIndex}" data-field="practice">Убрать</button>`
+                    : ""
+                }
+              </div>`
             : "";
           const openBtn = row.bankId
             ? `<button class="practice-link" type="button" data-row="${rowIndex}" data-bank="${escapeHtml(
                 row.bankId
               )}">${escapeHtml(fraction)}</button>`
-            : `<span class="hint">${isTeacherUi() ? "PDF или набор" : "пока нет заданий"}</span>`;
-          return `<td class="col-practice practice-cell" data-label="${escapeHtml(column.label)}"><div class="practice-box">${attach}${teacherSelect}${
+            : isTeacherUi()
+              ? `<button class="practice-open-hint" type="button" data-row="${rowIndex}">PDF или набор</button>`
+              : `<span class="hint">пока нет заданий</span>`;
+          return `<td class="col-practice practice-cell" data-label="${escapeHtml(column.label)}"><div class="practice-box">${teacherSelect}<div class="practice-actions">${attach}${practiceFile}${
             isTeacherUi() || row.bankId ? openBtn : "—"
-          }</div></td>`;
+          }</div></div></td>`;
         }
         if (column.key === "progress") {
           if (!row.bankId) {
@@ -2398,43 +2462,39 @@ if (els.logoutConfirm) {
   });
 }
 
-document.addEventListener(
-  "pointerdown",
-  (event) => {
-    const bankDelete = event.target.closest(".bank-delete");
-    if (bankDelete) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!isTeacherUi()) return;
-      const bankId = bankDelete.dataset.bank;
-      setTimeout(() => {
-        deletePracticeBank(bankId).catch((error) => {
-          setSaveStatus(error.message);
-          alert(error.message);
-        });
-      }, 0);
-      return;
-    }
-    const bankChoice = event.target.closest(".bank-picker-choice");
-    if (bankChoice) {
-      event.preventDefault();
-      event.stopPropagation();
-      applyBankChoice(bankChoice);
-      return;
-    }
-    const toggle = event.target.closest(".bank-picker-toggle");
-    if (toggle) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!isTeacherUi()) return;
-      const picker = toggle.closest(".bank-picker");
-      if (picker) openBankPicker(picker);
-      return;
-    }
-    if (!event.target.closest(".bank-picker-menu")) closeBankPickers();
-  },
-  true
-);
+document.addEventListener("click", (event) => {
+  const bankDelete = event.target.closest(".bank-delete");
+  if (bankDelete) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isTeacherUi()) return;
+    const bankId = bankDelete.dataset.bank;
+    deletePracticeBank(bankId).catch((error) => {
+      setSaveStatus(error.message);
+      alert(error.message);
+    });
+    return;
+  }
+  const bankChoice = event.target.closest(".bank-picker-choice");
+  if (bankChoice) {
+    event.preventDefault();
+    event.stopPropagation();
+    applyBankChoice(bankChoice);
+    return;
+  }
+  const pickerToggle = event.target.closest(".bank-picker-toggle, .practice-open-hint");
+  if (pickerToggle) {
+    if (!isTeacherUi()) return;
+    const row = pickerToggle.dataset.row;
+    const picker =
+      pickerToggle.closest(".bank-picker") || document.querySelector(`.bank-picker[data-row="${row}"]`);
+    if (picker) openBankPicker(picker, pickerToggle);
+    return;
+  }
+  if (event.target.closest(".bank-picker-menu")) return;
+  if (Date.now() < bankMenuIgnoreUntil) return;
+  closeBankPickers();
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeBankPickers();
 });

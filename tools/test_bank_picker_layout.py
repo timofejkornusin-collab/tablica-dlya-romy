@@ -70,6 +70,12 @@ class BankPickerLayoutTest(unittest.TestCase):
         self.assertIn("class=\"bank-delete\"", app_js)
         self.assertIn("class=\"bank-picker-name\"", app_js)
         self.assertIn("class=\"bank-picker-toggle\"", app_js)
+        self.assertIn("practice-open-hint", app_js)
+        self.assertIn("practice-upload", app_js)
+        self.assertIn("showPopover", app_js)
+        self.assertIn('popover="manual"', app_js)
+        self.assertIn(":popover-open", styles)
+        self.assertIn("z-index: 4000", styles)
         self.assertLess(app_js.index("bank-picker-choice"), app_js.index("bank-delete"))
 
     @unittest.skip("Chrome headless в этой среде зависает")
