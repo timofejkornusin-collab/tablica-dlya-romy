@@ -652,7 +652,10 @@ class BankKeyTest(unittest.TestCase):
         styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
         self.assertIn("deletePracticeBank", app_js)
         self.assertIn("bank-delete", app_js)
+        self.assertIn("bank-files-toggle", app_js)
+        self.assertIn('data-role="bank"', app_js)
         self.assertIn("/api/banks/delete", app_js)
+        self.assertNotIn('window.addEventListener("scroll", closeBankPickers, true)', app_js)
         self.assertIn("purge_bank", (ROOT / "journal.py").read_text(encoding="utf-8"))
         self.assertIn(".bank-delete", styles)
 

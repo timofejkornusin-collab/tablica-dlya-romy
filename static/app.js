@@ -1191,31 +1191,37 @@ function bankItems(selected) {
   return items;
 }
 
+function bankOptions(selected) {
+  return `<option value="">— нет —</option>${bankItems(selected)
+    .map((bank) => {
+      return `<option value="${escapeHtml(bank.id)}" ${bank.id === selected ? "selected" : ""}>${escapeHtml(
+        bankLabel(bank)
+      )}</option>`;
+    })
+    .join("")}`;
+}
+
 function bankPickerHtml(rowIndex, selected) {
-  const items = bankItems(selected);
-  const current = items.find((bank) => bank.id === selected);
-  const currentLabel = selected ? bankLabel(current) : "— нет —";
-  const rows = [
-    `<button class="bank-picker-choice" type="button" data-row="${rowIndex}" data-bank="">— нет —</button>`,
-    ...items.map((bank) => {
-      const canDelete = String(bank.id || "").startsWith("pdf-");
-      return `<div class="bank-picker-row${bank.id === selected ? " is-selected" : ""}">
-        <button class="bank-picker-choice" type="button" data-row="${rowIndex}" data-bank="${escapeHtml(bank.id)}">${escapeHtml(
-          bankLabel(bank)
-        )}</button>
-        ${
-          canDelete
-            ? `<button class="bank-delete" type="button" data-bank="${escapeHtml(bank.id)}" title="Удалить из практических заданий" aria-label="Удалить ${escapeHtml(
-                bankLabel(bank)
-              )}">×</button>`
-            : ""
-        }
+  const pdfItems = bankItems(selected).filter((bank) => String(bank.id || "").startsWith("pdf-"));
+  const filesToggle = pdfItems.length
+    ? `<button class="bank-files-toggle" type="button" data-row="${rowIndex}" aria-expanded="false" title="Удалить загруженные PDF" aria-label="Удалить загруженные PDF">×</button>`
+    : "";
+  const filesMenu = pdfItems.length
+    ? `<div class="bank-picker-menu hidden" data-row="${rowIndex}">${pdfItems
+        .map((bank) => {
+          return `<div class="bank-picker-row${bank.id === selected ? " is-selected" : ""}">
+        <span class="bank-picker-choice">${escapeHtml(bankLabel(bank))}</span>
+        <button class="bank-delete" type="button" data-bank="${escapeHtml(bank.id)}" title="Удалить из практических заданий" aria-label="Удалить ${escapeHtml(
+            bankLabel(bank)
+          )}">×</button>
       </div>`;
-    }),
-  ];
+        })
+        .join("")}</div>`
+    : "";
   return `<div class="bank-picker" data-row="${rowIndex}">
-    <button class="bank-picker-toggle" type="button" data-row="${rowIndex}" aria-expanded="false">${escapeHtml(currentLabel)}</button>
-    <div class="bank-picker-menu hidden" data-row="${rowIndex}">${rows.join("")}</div>
+    <select data-row="${rowIndex}" data-role="bank" aria-label="Практические задания">${bankOptions(selected)}</select>
+    ${filesToggle}
+    ${filesMenu}
   </div>`;
 }
 
@@ -1228,14 +1234,14 @@ function closeBankPickers() {
     menu.style.top = "";
     menu.style.width = "";
   });
-  document.querySelectorAll(".bank-picker-toggle").forEach((button) => button.setAttribute("aria-expanded", "false"));
+  document.querySelectorAll(".bank-files-toggle").forEach((button) => button.setAttribute("aria-expanded", "false"));
 }
 
-function openBankPicker(picker) {
+function openBankFilesMenu(picker) {
   const row = picker.dataset.row;
   const menu =
     picker.querySelector(".bank-picker-menu") || document.querySelector(`.bank-picker-menu[data-row="${row}"]`);
-  const toggle = picker.querySelector(".bank-picker-toggle");
+  const toggle = picker.querySelector(".bank-files-toggle");
   if (!menu || !toggle) return;
   const already = !menu.classList.contains("hidden");
   closeBankPickers();
@@ -1245,9 +1251,11 @@ function openBankPicker(picker) {
   menu.classList.remove("hidden");
   toggle.setAttribute("aria-expanded", "true");
   const rect = toggle.getBoundingClientRect();
-  menu.style.left = `${Math.max(8, rect.left)}px`;
+  const width = Math.max(rect.width, 260);
+  const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+  menu.style.left = `${left}px`;
   menu.style.top = `${rect.bottom + 4}px`;
-  menu.style.width = `${Math.max(rect.width, 240)}px`;
+  menu.style.width = `${width}px`;
 }
 
 let bankDeleteBusy = false;
@@ -1274,16 +1282,6 @@ async function deletePracticeBank(bankId) {
   } finally {
     bankDeleteBusy = false;
   }
-}
-
-function bankOptions(selected) {
-  return bankItems(selected)
-    .map((bank) => {
-      return `<option value="${escapeHtml(bank.id)}" ${bank.id === selected ? "selected" : ""}>${escapeHtml(
-        bankLabel(bank)
-      )}</option>`;
-    })
-    .join("");
 }
 
 function rowHasLessonContent(row) {
@@ -2149,14 +2147,6 @@ els.tableView.addEventListener("mousedown", (event) => {
 });
 
 els.tableView.addEventListener("click", async (event) => {
-  const pickerToggle = event.target.closest(".bank-picker-toggle");
-  if (pickerToggle) {
-    event.preventDefault();
-    event.stopPropagation();
-    const picker = pickerToggle.closest(".bank-picker");
-    if (picker) openBankPicker(picker);
-    return;
-  }
   const copyRowBtn = event.target.closest(".row-copy-btn");
   if (copyRowBtn) {
     event.preventDefault();
@@ -2397,39 +2387,43 @@ if (els.logoutConfirm) {
   });
 }
 
-document.addEventListener("click", (event) => {
-  const bankDelete = event.target.closest(".bank-delete");
-  if (bankDelete) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!isTeacherUi()) return;
-    deletePracticeBank(bankDelete.dataset.bank).catch((error) => {
-      setSaveStatus(error.message);
-      alert(error.message);
-    });
-    return;
-  }
-  const bankChoice = event.target.closest(".bank-picker-choice");
-  if (bankChoice) {
-    event.preventDefault();
-    if (!isTeacherUi()) return;
-    const student = currentStudent();
-    const row = student && student.rows[Number(bankChoice.dataset.row)];
-    if (!row) return;
-    row.bankId = bankChoice.dataset.bank || "";
-    row.importedSource = row.bankId ? `manual:${row.bankId}` : "";
-    closeBankPickers();
-    persistCurrent()
-      .then(() => renderTable())
-      .catch((error) => setSaveStatus(error.message));
-    return;
-  }
-  if (!event.target.closest(".bank-picker, .bank-picker-menu")) closeBankPickers();
-});
+document.addEventListener(
+  "pointerdown",
+  (event) => {
+    const filesToggle = event.target.closest(".bank-files-toggle");
+    if (filesToggle) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!isTeacherUi()) return;
+      const picker = filesToggle.closest(".bank-picker");
+      if (picker) openBankFilesMenu(picker);
+      return;
+    }
+    const bankDelete = event.target.closest(".bank-delete");
+    if (bankDelete) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!isTeacherUi()) return;
+      const bankId = bankDelete.dataset.bank;
+      setTimeout(() => {
+        deletePracticeBank(bankId).catch((error) => {
+          setSaveStatus(error.message);
+          alert(error.message);
+        });
+      }, 0);
+      return;
+    }
+    if (event.target.closest("select[data-role='bank']")) {
+      closeBankPickers();
+      return;
+    }
+    if (!event.target.closest(".bank-picker, .bank-picker-menu")) closeBankPickers();
+  },
+  true
+);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeBankPickers();
 });
-window.addEventListener("scroll", closeBankPickers, true);
 
 function startPolling() {
   clearInterval(pollTimer);
