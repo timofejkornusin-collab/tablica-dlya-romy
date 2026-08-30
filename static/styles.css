@@ -89,6 +89,15 @@ body {
   gap: 14px;
 }
 
+.topbar-left {
+  min-width: 0;
+}
+
+#back-btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 .topbar-right {
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -1843,6 +1852,7 @@ textarea[readonly] {
     padding: 10px 14px;
     background: var(--navy-soft);
     border-radius: 10px;
+    white-space: nowrap;
   }
 
   .preview-banner,
