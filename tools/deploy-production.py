@@ -81,12 +81,13 @@ APP_MARKERS = (
     "rowTheoryFiles",
     "renderStudentTextCell",
     "attach-file-label",
+    "updateLogoutButton",
 )
 
 CACHE_BUSTERS = {
     r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=list-nowrap1",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=theory-grow1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=hide-share1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=logout-list1",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
@@ -418,7 +419,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "hide-share1" in installed_index else "0"
+    index_marker = "1" if "logout-list1" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -430,7 +431,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("hide-share1"))
+        index_marker = str(live_index.count("logout-list1"))
         api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)
