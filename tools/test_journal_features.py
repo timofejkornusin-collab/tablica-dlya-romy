@@ -337,7 +337,17 @@ class StudentTableCellsTest(unittest.TestCase):
         self.assertIn(".teacher-table .lesson-held td.col-date", styles)
         self.assertIn(".teacher-table .lesson-missed td.col-date", styles)
         self.assertNotIn("\n.lesson-held td.col-date {", styles)
-        self.assertIn("theory-grow1", (ROOT / "static" / "index.html").read_text(encoding="utf-8"))
+
+
+class BackToListButtonTest(unittest.TestCase):
+    def test_back_button_stays_on_one_line(self) -> None:
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="back-btn"', html)
+        self.assertIn("← К списку", html)
+        self.assertIn("#back-btn {\n  white-space: nowrap;\n  flex: 0 0 auto;\n}", styles)
+        self.assertIn("list-nowrap1", html)
+
 
 
 class MobileAttachButtonTest(unittest.TestCase):
