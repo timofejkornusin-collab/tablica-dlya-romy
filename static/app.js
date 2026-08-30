@@ -517,8 +517,16 @@ function updateModeChrome() {
   if (els.previewBtn) {
     els.previewBtn.classList.toggle("hidden", !isTeacherUi() || !inStudentTable);
   }
+  updateLogoutButton();
   updateTableCopyButtons();
   document.body.classList.toggle("student-preview", isStudentView());
+}
+
+function updateLogoutButton() {
+  if (!els.logoutBtn) return;
+  const onStudentCards = isTeacherAccount() && state.view === "list";
+  const realStudent = !isTeacherAccount();
+  els.logoutBtn.classList.toggle("hidden", !(onStudentCards || realStudent));
 }
 
 function currentStudent() {
@@ -631,7 +639,6 @@ function showApp() {
   if (els.loginScreen) els.loginScreen.classList.add("hidden");
   els.app.classList.remove("hidden");
   els.addStudentBtn.classList.toggle("hidden", !isTeacherUi());
-  if (els.logoutBtn) els.logoutBtn.classList.remove("hidden");
   updateModeChrome();
   updateShareBar();
 }

@@ -349,6 +349,18 @@ class BackToListButtonTest(unittest.TestCase):
         self.assertIn("list-nowrap1", html)
 
 
+class LogoutOnListOnlyTest(unittest.TestCase):
+    def test_teacher_logout_is_only_on_student_cards(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function updateLogoutButton()", app_js)
+        self.assertIn('const onStudentCards = isTeacherAccount() && state.view === "list";', app_js)
+        self.assertIn("const realStudent = !isTeacherAccount();", app_js)
+        self.assertIn("updateLogoutButton();", app_js)
+        self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
+        self.assertIn("app.js?v=logout-list1", html)
+
+
 
 class MobileAttachButtonTest(unittest.TestCase):
     def test_phone_and_tablet_show_full_issue_file_button(self) -> None:
