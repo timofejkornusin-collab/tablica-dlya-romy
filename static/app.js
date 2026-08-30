@@ -1444,11 +1444,7 @@ function renderTable() {
   }
   updateTableCopyButtons();
   els.pageTitle.textContent = student.name;
-  setPageSubtitle(
-    isStudentView()
-      ? "Та же таблица, что у педагога: сначала первая строка, затем следующая после заполнения."
-      : "Между уроками нажмите «+»: появится отдельный урок, дату ставит педагог, остальные даты не сдвигаются. «Найти» открывает строку по дате."
-  );
+  setPageSubtitle("");
   updateModeChrome();
   updateShareBar();
 

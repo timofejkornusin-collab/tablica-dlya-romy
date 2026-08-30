@@ -305,6 +305,8 @@ class QuietUiTest(unittest.TestCase):
         self.assertIn("function hideUnwantedLabels()", app_js)
         self.assertIn("function setPageSubtitle(", app_js)
         self.assertIn('setPageSubtitle("")', app_js)
+        self.assertNotIn("Между уроками нажмите", app_js)
+        self.assertNotIn("Та же таблица, что у педагога", app_js)
         self.assertNotIn("Подготовка к экзаменам и уроки", app_js)
         self.assertNotIn("логин: ${escapeHtml(student.login)}", app_js)
         self.assertIn('value === "Сохранено"', app_js)
@@ -358,7 +360,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=logout-list1", html)
+        self.assertIn("app.js?v=no-table-hint1", html)
 
 
 
