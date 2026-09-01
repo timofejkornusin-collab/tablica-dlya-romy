@@ -1773,7 +1773,7 @@ async function openPractice(bankId, options = {}) {
   els.backBtn.classList.remove("hidden");
   els.backBtn.textContent = "← К таблице";
   els.pageTitle.textContent = data.title;
-  setPageSubtitle(isStudentView() ? `${student.name}. Впишите номера рядов и нажмите «Сохранить».` : student.name);
+  setPageSubtitle("");
   updateModeChrome();
   updateShareBar();
   renderPractice();
@@ -1878,14 +1878,30 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function formatTaskPrompt(text) {
+function formatStoredPrompt(text) {
   let raw = String(text || "").replace(/\r/g, "");
   raw = raw.replace(
     /(Запишите номера этих предложений|Запишите номера ответов|запишите слово правильно|Запишите это слово)\.?\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«"])/gi,
     "$1.\n\n"
   );
+  raw = raw.replace(
+    /(пишется)\s*\n+\s*((?:одна\s+буква\s+Н|НН|Н))\.?/gi,
+    "$1 $2."
+  );
+  raw = raw.replace(
+    /(пишется\s+(?:одна\s+буква\s+Н|НН|Н)\.)[ \t]*\n*[ \t]*(?!(?:Укажите|Запишите|Найдите|Выберите))(?=[«"“„]|[-—–]|[А-ЯЁ])/g,
+    "$1\n\n"
+  );
+  raw = raw.replace(
+    /(запятая\(-ые\)\.)[ \t]*\n*[ \t]*(?!(?:Укажите|Запишите|Найдите|Выберите))(?=[«"“„]|[-—–]|[А-ЯЁ])/g,
+    "$1\n\n"
+  );
   raw = raw.replace(/\n{3,}/g, "\n\n");
   return raw;
+}
+
+function formatTaskPrompt(text) {
+  return formatStoredPrompt(text);
 }
 
 function renderTaskPrompt(text) {

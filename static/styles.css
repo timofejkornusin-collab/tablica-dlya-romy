@@ -208,6 +208,10 @@ h1 {
   display: none !important;
 }
 
+body.practice-open #page-subtitle {
+  display: none !important;
+}
+
 /* BUTTONS */
 .primary-btn,
 .secondary-btn,

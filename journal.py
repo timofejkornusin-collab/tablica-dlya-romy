@@ -11,6 +11,8 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from pdf_import import format_stored_prompt
+
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 BANKS_DIR = DATA_DIR / "banks"
@@ -862,7 +864,7 @@ def public_practice(bank: dict, student: dict, role: str) -> dict:
         key = normalize_answer(str(task.get("answer") or ""), word=word)
         item = {
             "n": number,
-            "prompt": task.get("prompt") or bank.get("instruction") or "",
+            "prompt": format_stored_prompt(task.get("prompt") or bank.get("instruction") or ""),
             "options": task.get("options") or [],
             "kind": str(task.get("kind") or ""),
             "word": word,
@@ -885,7 +887,7 @@ def public_practice(bank: dict, student: dict, role: str) -> dict:
     return {
         "id": bank["id"],
         "title": bank.get("title") or bank["id"],
-        "instruction": bank.get("instruction") or "",
+        "instruction": format_stored_prompt(bank.get("instruction") or ""),
         "tasks": tasks,
         "stats": stats,
         "statsColor": progress_color(stats["percent"]),

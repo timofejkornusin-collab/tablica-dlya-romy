@@ -91,8 +91,14 @@ INSTRUCTION_END = re.compile(
     r"Запишите номера ответов|"
     r"запишите слово правильно|"
     r"Запишите это слово|"
-    r"на месте которой.{0,24}пишется.{0,48}?"
+    r"на месте которой.{0,48}пишется(?:\s+одна\s+буква\s+Н|\s+НН|\s+Н)|"
+    r"на месте которой.{0,80}запятая(?:\(-ые\))?"
     r")\.?"
+)
+WRITING_TARGET = r"(?:одна\s+буква\s+Н|НН|Н)"
+SENTENCE_START = (
+    r"(?!(?:Укажите|Запишите|Найдите|Выберите|Отредактируйте|Исправьте))"
+    r"(?:[«\"“„]|[-—–]|[А-ЯЁ])"
 )
 WORD_HINTS = (
     "запишите слово",
@@ -192,6 +198,16 @@ def _clean_extracted(text: str) -> str:
         r"\1\n\n",
         text,
         flags=re.I,
+    )
+    text = re.sub(
+        rf"(пишется(?:\s+одна\s+буква\s+Н|\s+НН|\s+Н)\.)\s*(?={SENTENCE_START})",
+        r"\1\n\n",
+        text,
+    )
+    text = re.sub(
+        rf"(запятая\(-ые\)\.)\s*(?={SENTENCE_START})",
+        r"\1\n\n",
+        text,
     )
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -302,6 +318,29 @@ def _looks_word_prompt(prompt: str) -> bool:
     return any(hint in text for hint in WORD_HINTS)
 
 
+def format_stored_prompt(prompt: str) -> str:
+    """Keep НН / «одна буква Н» on the instruction line; split instruction from the sentence."""
+    text = str(prompt or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+    text = re.sub(
+        rf"(?i)(пишется)\s*\n+\s*({WRITING_TARGET})\.?",
+        r"\1 \2.",
+        text,
+    )
+    text = re.sub(
+        rf"(пишется\s+{WRITING_TARGET}\.)[ \t]*\n*[ \t]*(?={SENTENCE_START})",
+        r"\1\n\n",
+        text,
+    )
+    text = re.sub(
+        rf"(запятая\(-ые\)\.)[ \t]*\n*[ \t]*(?={SENTENCE_START})",
+        r"\1\n\n",
+        text,
+    )
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def _split_instruction(text: str) -> tuple[str, str]:
     raw = BLANK_ANSWER.sub(" ", text or "")
     match = INSTRUCTION_END.search(raw)
@@ -363,18 +402,26 @@ def _format_passage(text: str) -> str:
     return "\n\n".join(part for part in parts if part).strip()
 
 
+def _headed_instruction(stem: str) -> str:
+    text = (stem or "").strip()
+    if text and not re.search(r"[.!?]$", text):
+        return f"{text}."
+    return text
+
+
 def _task_prompt(body: str, options: list[str]) -> str:
     stem, rest = _split_instruction(body or "")
     if options:
         text = stem or _cut_at_options(BLANK_ANSWER.sub(" ", body or ""), options)
         text = _strip_prompt_tail(_squash(text), strip_number=True)
-        return (text[:800] or EGE_PROMPT).strip()
+        return format_stored_prompt((text[:800] or EGE_PROMPT).strip())
     if stem:
         passage = _format_passage(rest)
-        text = f"{stem}\n\n{passage}" if passage else stem
-        return re.sub(r"\n{3,}", "\n\n", _strip_prompt_tail(text, strip_number=False))[:4000].strip()
+        text = f"{_headed_instruction(stem)}\n\n{passage}" if passage else stem
+        text = re.sub(r"\n{3,}", "\n\n", _strip_prompt_tail(text, strip_number=False))[:4000].strip()
+        return format_stored_prompt(text)
     text = _format_passage(BLANK_ANSWER.sub(" ", body or ""))
-    return _strip_prompt_tail(text, strip_number=False)[:4000].strip()
+    return format_stored_prompt(_strip_prompt_tail(text, strip_number=False)[:4000].strip())
 
 
 def _normalize_key_text(raw: str) -> str:
