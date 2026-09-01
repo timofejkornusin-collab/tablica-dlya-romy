@@ -348,7 +348,7 @@ class BackToListButtonTest(unittest.TestCase):
         self.assertIn('id="back-btn"', html)
         self.assertIn("← К списку", html)
         self.assertIn("#back-btn {\n  white-space: nowrap;\n  flex: 0 0 auto;\n}", styles)
-        self.assertIn("post-fix1", html)
+        self.assertIn("prompt-split1", html)
 
 
 class LogoutOnListOnlyTest(unittest.TestCase):
@@ -360,7 +360,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=post-fix1", html)
+        self.assertIn("app.js?v=prompt-split1", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -232,7 +233,13 @@ class SyntheticPdfImportTest(unittest.TestCase):
         self.assertIn("(1)Я сидел", tasks[1]["prompt"])
         self.assertIn("\n\n", tasks[0]["prompt"])
         self.assertIn("\n\n", tasks[1]["prompt"])
-        self.assertTrue(tasks[1]["prompt"].split("\n\n")[0].endswith("предложений"))
+        instruction, passage = tasks[0]["prompt"].split("\n\n", 1)
+        self.assertTrue(instruction.endswith("НН."))
+        self.assertTrue(passage.startswith("Все дома"))
+        self.assertNotIn("НН.", passage)
+        instruction2, passage2 = tasks[1]["prompt"].split("\n\n", 1)
+        self.assertTrue(instruction2.rstrip(".").endswith("предложений"))
+        self.assertTrue(passage2.startswith("(1)Я сидел"))
         self.assertFalse(journal.is_word_task(tasks[0]))
         self.assertFalse(journal.is_word_task(tasks[1]))
 
@@ -266,6 +273,146 @@ class SyntheticPdfImportTest(unittest.TestCase):
         self.assertNotIn("Ответ", tasks[0]["prompt"])
         self.assertNotRegex(tasks[0]["prompt"].rstrip(), r"\b\d{1,2}\s*$")
         self.assertIn("пропущена одна и та же буква", tasks[0]["prompt"])
+
+
+class PromptParagraphSplitTest(unittest.TestCase):
+    def _parts(self, prompt: str) -> list[str]:
+        return [part.strip() for part in re.split(r"\n\s*\n", prompt) if part.strip()]
+
+    def test_task15_keeps_nn_on_instruction_when_wrapped(self) -> None:
+        text = (
+            "1.Укажите цифру(-ы), на месте которой(-ых) пишется\n"
+            "НН. Все дома необыкнове(1)о приплюснуты, давно не штукатуре(2)ы, крыши не краше(3)ы, ставни затворе(4)ы.\n"
+            "2.Укажите цифру(-ы), на месте которой(-ых) пишется\n"
+            "одна буква Н. Надпись напомнила ему долгожда(1)ую телеграмму, написа(2)ую на си(3)ей стекля(3)ой табличке.\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        first = self._parts(tasks[0]["prompt"])
+        second = self._parts(tasks[1]["prompt"])
+        self.assertEqual(len(first), 2, tasks[0]["prompt"])
+        self.assertTrue(first[0].endswith("пишется НН."))
+        self.assertTrue(first[1].startswith("Все дома"))
+        self.assertNotIn("НН.", first[1])
+        self.assertTrue(second[0].endswith("пишется одна буква Н."))
+        self.assertTrue(second[1].startswith("Надпись напомнила"))
+        self.assertNotIn("одна буква Н.", second[1])
+
+    def test_format_stored_prompt_repairs_live_task15_and_17(self) -> None:
+        fifteen = (
+            "Укажите цифру(-ы), на месте которой(-ых) пишется\n\n"
+            "НН. Все дома необыкнове(1)о приплюснуты, давно не штукатуре(2)ы, крыши не краше(3)ы, ставни затворе(4)ы"
+        )
+        fifteen_n = (
+            "Укажите цифру(-ы), на месте которой(-ых) пишется\n\n"
+            "одна буква Н. Надпись напомнила ему долгожда(1)ую телеграмму"
+        )
+        seventeen = (
+            "Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). "
+            "Войдя в номер (1) проезжий тотчас сбросил с себя шинель и шарф"
+        )
+        eighteen = (
+            "Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). "
+            "— Эй ты, — крикнул он (1) громко"
+        )
+        first = self._parts(pdf_import.format_stored_prompt(fifteen))
+        self.assertEqual(first[0], "Укажите цифру(-ы), на месте которой(-ых) пишется НН.")
+        self.assertTrue(first[1].startswith("Все дома"))
+        second = self._parts(pdf_import.format_stored_prompt(fifteen_n))
+        self.assertTrue(second[0].endswith("пишется одна буква Н."))
+        self.assertTrue(second[1].startswith("Надпись напомнила"))
+        comma = self._parts(pdf_import.format_stored_prompt(seventeen))
+        self.assertTrue(comma[0].endswith("запятая(-ые)."))
+        self.assertTrue(comma[1].startswith("Войдя в номер"))
+        dashed = self._parts(pdf_import.format_stored_prompt(eighteen))
+        self.assertTrue(dashed[0].endswith("запятая(-ые)."))
+        self.assertTrue(dashed[1].startswith("— Эй ты"))
+        again = pdf_import.format_stored_prompt(pdf_import.format_stored_prompt(fifteen))
+        self.assertEqual(again, pdf_import.format_stored_prompt(fifteen))
+
+    def test_task17_pdf_layout_splits_instruction_and_sentence(self) -> None:
+        text = (
+            "1.Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). Ответ: ________________.\n"
+            "Войдя в номер (1) проезжий тотчас сбросил с себя шинель и шарф, сел на диван (2) и (3) опершись в колени кулаками (4) сперва поглядел кругом.\n"
+            "2.Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). Ответ: ________________.\n"
+            "Он не полностью видел Лежнева (1) стоявшего к свету спиною (2) и (3) с недоумением глядя на него (4) пытался разобраться в его чертах.\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        first = self._parts(tasks[0]["prompt"])
+        second = self._parts(tasks[1]["prompt"])
+        self.assertEqual(len(first), 2, tasks[0]["prompt"])
+        self.assertTrue(first[0].endswith("запятая(-ые)."))
+        self.assertTrue(first[1].startswith("Войдя в номер (1) проезжий"))
+        self.assertTrue(second[1].startswith("Он не полностью видел Лежнева (1)"))
+        self.assertNotIn("\n", first[0])
+        self.assertNotIn("Войдя", first[0])
+
+    def test_public_practice_repairs_already_imported_prompts(self) -> None:
+        bank = {
+            "id": "pdf-live",
+            "title": "Задание 15",
+            "instruction": "Укажите цифру(-ы), на месте которой(-ых) пишется\n\nНН. Все дома",
+            "tasks": [
+                {
+                    "n": 1,
+                    "prompt": "Укажите цифру(-ы), на месте которой(-ых) пишется\n\nНН. Все дома необыкнове(1)о приплюснуты.",
+                },
+                {
+                    "n": 2,
+                    "prompt": "Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). Войдя в номер (1) проезжий тотчас сбросил шинель.",
+                },
+            ],
+        }
+        payload = journal.public_practice(bank, {"id": "s", "name": "рома", "progress": {}}, "teacher")
+        first = self._parts(payload["tasks"][0]["prompt"])
+        second = self._parts(payload["tasks"][1]["prompt"])
+        self.assertTrue(first[0].endswith("пишется НН."))
+        self.assertTrue(first[1].startswith("Все дома"))
+        self.assertTrue(second[0].endswith("запятая(-ые)."))
+        self.assertTrue(second[1].startswith("Войдя в номер"))
+        self.assertTrue(self._parts(payload["instruction"])[0].endswith("пишется НН."))
+
+    def test_frontend_keeps_format_stored_prompt(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("function formatStoredPrompt(text)", app_js)
+        self.assertIn(r"запятая\(-ые\)", app_js)
+        self.assertIn(r"одна\s+буква\s+Н", app_js)
+        self.assertIn("body.practice-open #page-subtitle", styles)
+        self.assertIn('setPageSubtitle("");', app_js)
+
+    def test_js_format_stored_prompt_matches_python(self) -> None:
+        import json
+        import shutil
+        import subprocess
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("нет node")
+        app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        start = app.index("function formatStoredPrompt")
+        end = app.index("function formatTaskPrompt")
+        samples = [
+            "Укажите цифру(-ы), на месте которой(-ых) пишется\n\nНН. Все дома необыкнове(1)о приплюснуты.",
+            "Укажите цифру(-ы), на месте которой(-ых) пишется\n\nодна буква Н. Надпись напомнила ему телеграмму",
+            "Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). Войдя в номер (1) проезжий тотчас сбросил шинель.",
+            "Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). — Эй ты, — крикнул он (1) громко",
+        ]
+        script = (
+            app[start:end]
+            + "const samples = "
+            + json.dumps(samples, ensure_ascii=False)
+            + ";\nfor (const item of samples) console.log(JSON.stringify(formatStoredPrompt(item)));\n"
+        )
+        result = subprocess.run(
+            [node, "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        self.assertEqual(len(lines), len(samples))
+        for raw, line in zip(samples, lines):
+            self.assertEqual(json.loads(line), pdf_import.format_stored_prompt(raw))
 
 
 @unittest.skipUnless(all((FOLDER / name).is_file() for name in FILES.values()), "нет исходных PDF")
