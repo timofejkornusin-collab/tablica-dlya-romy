@@ -46,7 +46,7 @@ class DeployProductionTest(unittest.TestCase):
             "function restorePracticeScroll() {}\nconst keepScroll = true;\n"
             "function applyCopiedTable() {}\nfunction applyCopiedRow() {}\nfunction bumpSaveEpoch() {}\n"
             "function syncStartDateWeekday() {}\nconst keepRicher = true;\n"
-            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\nconst attachLabel = 'attach-file-label';\nfunction updateLogoutButton() {}\nfunction ensureTableActionLayout() {}\nfunction updateBrandPill() {}\nfunction ensureGradeField() {}\nconst pick = 'file-pick';\nconst needsImport = 'needsImport';\n",
+            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\nconst attachLabel = 'attach-file-label';\nfunction updateLogoutButton() {}\nfunction ensureTableActionLayout() {}\nfunction updateBrandPill() {}\nfunction ensureGradeField() {}\nconst pick = 'file-pick';\nconst needsImport = 'needsImport';\nconst serverDown = 'Сервер не ответил';\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "practice-page.js").write_text(
@@ -99,9 +99,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=practice-fix1", text)
-        self.assertIn("mobile.css?v=practice-fix1", text)
-        self.assertIn("app.js?v=practice-fix1", text)
+        self.assertIn("styles.css?v=post-fix1", text)
+        self.assertIn("mobile.css?v=post-fix1", text)
+        self.assertIn("app.js?v=post-fix1", text)
         self.assertIn("find-date.js?v=class-bar1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
@@ -240,7 +240,7 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("journal-students-safety-begin", server_text)
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("practice-fix1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("post-fix1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertTrue((self.app / "static" / "find-date.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
@@ -404,12 +404,22 @@ class ProductionStudentsSafetyTest(unittest.TestCase):
 
         other = Handler()
         other.path = "/api/login"
-        with self.assertRaises(RuntimeError):
-            Handler.do_POST(other)
+        Handler.do_POST(other)
+        self.assertEqual(other.status, 500)
+        login_body = json.loads(other.wfile.getvalue().decode("utf-8"))
+        self.assertFalse(login_body.get("ok", True))
+        self.assertTrue(login_body.get("error"))
 
-    def test_persists_student_grade_after_create_and_schedule_post(self) -> None:
+    def test_safety_create_table_delete_work_when_old_post_crashes(self) -> None:
         import importlib.util
+        import io
+        import json
+        import sys
         import threading
+
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        import journal
 
         spec = importlib.util.spec_from_file_location(
             "production_students_safety",
@@ -422,47 +432,125 @@ class ProductionStudentsSafetyTest(unittest.TestCase):
         class Handler:
             def __init__(self) -> None:
                 self.path = "/api/students"
-                self.payload = {"name": "рома", "grade": " 10 "}
+                self.payload = {}
+                self.wfile = io.BytesIO()
+                self.status = 0
+                self._headers_sent = False
 
             def do_GET(self) -> None:
                 raise RuntimeError("old get boom")
 
             def do_POST(self) -> None:
-                self._read_json()
+                raise RuntimeError("old post boom")
+
+            def _user(self):
+                return {"role": "teacher", "student_id": None}
 
             def _read_json(self):
                 return self.payload
 
-        data_store = {"students": [{"id": "1", "name": "рома"}]}
-        journal_mod = type("Journal", (), {})()
-        journal_mod.clean_grade = staticmethod(lambda raw: " ".join(str(raw or "").split())[:24])
-        journal_mod.public_students_payload = staticmethod(lambda students: {"students": students or []})
+            def send_response(self, status) -> None:
+                self.status = status
+
+            def send_header(self, key, value) -> None:
+                return None
+
+            def end_headers(self) -> None:
+                self._headers_sent = True
+
+        data_store = {"students": []}
         installed = module.install(
             {
                 "Handler": Handler,
                 "load_data": lambda: data_store,
-                "save_data": lambda data: data_store.update(data),
-                "journal": journal_mod,
+                "save_data": lambda data: data_store.update({"students": list(data.get("students") or [])}),
+                "journal": journal,
                 "DATA_LOCK": threading.Lock(),
+                "hash_password": lambda password: ("salt", "digest"),
+                "generate_password": lambda: "pass-word",
+                "slug_login": lambda name: "roma",
             }
         )
         self.assertTrue(installed)
 
         create = Handler()
+        create.payload = {
+            "name": "рома",
+            "grade": "10",
+            "template": "once",
+            "startDate": "2026-09-03",
+            "slots": [{"weekday": 3, "time": "16:00"}],
+        }
         Handler.do_POST(create)
+        self.assertEqual(create.status, 200)
+        created = json.loads(create.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(created["ok"])
+        self.assertEqual(created["student"]["name"], "рома")
+        self.assertEqual(created["student"]["grade"], "10")
+        self.assertGreater(len(created["student"]["rows"]), 0)
+        student_id = created["student"]["id"]
         self.assertEqual(data_store["students"][0]["grade"], "10")
+
+        table = Handler()
+        table.path = "/api/table"
+        table.payload = {
+            "id": student_id,
+            "template": "once",
+            "rows": [
+                {
+                    "date": created["student"]["rows"][0]["date"],
+                    "topic": "Тема",
+                    "bankId": "",
+                    "importedSource": "manual:",
+                }
+            ],
+        }
+        Handler.do_POST(table)
+        self.assertEqual(table.status, 200)
+        saved = json.loads(table.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(saved["student"]["rows"][0]["topic"], "Тема")
 
         schedule = Handler()
         schedule.path = "/api/schedule"
-        schedule.payload = {"id": "1", "grade": "11"}
+        schedule.payload = {
+            "id": student_id,
+            "name": "рома",
+            "grade": "11",
+            "template": "once",
+            "startDate": "2026-09-03",
+            "slots": [{"weekday": 3, "time": "16:00"}],
+        }
         Handler.do_POST(schedule)
+        self.assertEqual(schedule.status, 200)
         self.assertEqual(data_store["students"][0]["grade"], "11")
 
         paste = Handler()
         paste.path = "/api/schedule"
-        paste.payload = {"id": "1", "name": "рома"}
+        paste.payload = {
+            "id": student_id,
+            "name": "рома",
+            "template": "once",
+            "startDate": "2026-09-03",
+            "slots": [{"weekday": 3, "time": "16:00"}],
+        }
         Handler.do_POST(paste)
+        self.assertEqual(paste.status, 200)
         self.assertEqual(data_store["students"][0]["grade"], "11")
+
+        delete = Handler()
+        delete.path = "/api/students/delete"
+        delete.payload = {"id": student_id}
+        Handler.do_POST(delete)
+        self.assertEqual(delete.status, 200)
+        self.assertEqual(data_store["students"], [])
+
+        other = Handler()
+        other.path = "/api/login"
+        Handler.do_POST(other)
+        self.assertEqual(other.status, 500)
+        login_body = json.loads(other.wfile.getvalue().decode("utf-8"))
+        self.assertFalse(login_body.get("ok", True))
+        self.assertTrue(login_body.get("error"))
 
     def test_safety_block_is_idempotent(self) -> None:
         self._temp = tempfile.TemporaryDirectory()

@@ -671,7 +671,15 @@ async function api(path, options = {}) {
     data = {};
   }
   if (!response.ok) {
-    const error = new Error(data.error || "Ошибка запроса");
+    let message = data.error;
+    if (!message) {
+      if (response.status >= 500) {
+        message = "Сервер не ответил. Обновите страницу и попробуйте ещё раз.";
+      } else {
+        message = "Ошибка запроса";
+      }
+    }
+    const error = new Error(message);
     error.status = response.status;
     throw error;
   }
