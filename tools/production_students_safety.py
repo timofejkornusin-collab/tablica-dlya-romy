@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import traceback
 from pathlib import Path
 
 
 ERROR_LOG = Path("/tmp/journal-students-error.log")
+_grade_job = contextvars.ContextVar("journal_grade_job", default=None)
 
 
 def _write_error(exc: BaseException | None = None) -> None:
@@ -142,12 +144,114 @@ def _request_json(handler):
     return data if isinstance(data, dict) else {}
 
 
+def _clean_grade(g: dict, raw) -> str:
+    journal = g.get("journal")
+    cleaner = getattr(journal, "clean_grade", None) if journal is not None else None
+    if callable(cleaner):
+        try:
+            return str(cleaner(raw) or "")
+        except Exception:
+            pass
+    return " ".join(str(raw or "").split())[:24]
+
+
+def _student_for_grade(g: dict, data: dict, path: str, payload: dict):
+    if path.rstrip("/").endswith("schedule"):
+        return _find_student(g, data, str(payload.get("id") or ""))
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return None
+    for item in reversed(list(data.get("students") or [])):
+        if isinstance(item, dict) and str(item.get("name") or "").strip() == name:
+            return item
+    return None
+
+
+def _apply_grade_to_data(g: dict, data: dict, path: str, payload) -> bool:
+    if not isinstance(data, dict) or not isinstance(payload, dict):
+        return False
+    grade = _clean_grade(g, payload.get("grade"))
+    if not grade:
+        return False
+    student = _student_for_grade(g, data, path, payload)
+    if not isinstance(student, dict):
+        return False
+    if str(student.get("grade") or "") == grade:
+        return False
+    student["grade"] = grade
+    return True
+
+
+def _persist_student_grade(g: dict, path: str, payload) -> None:
+    if not isinstance(payload, dict):
+        return
+    if not _clean_grade(g, payload.get("grade")):
+        return
+    lock = g.get("DATA_LOCK")
+    acquired = False
+    try:
+        if lock is not None and hasattr(lock, "acquire"):
+            try:
+                acquired = bool(lock.acquire(True, 3))
+            except TypeError:
+                lock.acquire()
+                acquired = True
+        data = _load_data(g)
+        if _apply_grade_to_data(g, data, path, payload):
+            _save_data(g, data)
+    except Exception as exc:
+        _write_error(exc)
+    finally:
+        if acquired:
+            try:
+                lock.release()
+            except Exception:
+                pass
+
+
+def _wrap_read_json(handler_cls) -> None:
+    orig_read_json = getattr(handler_cls, "_read_json", None)
+    if not callable(orig_read_json) or getattr(orig_read_json, "_journal_json_cached", False):
+        return
+
+    def _read_json(self):
+        if getattr(self, "_journal_json_read", False):
+            return getattr(self, "_journal_json_cache", None)
+        self._journal_json_read = True
+        data = orig_read_json(self)
+        self._journal_json_cache = data
+        job = _grade_job.get()
+        if job is not None and isinstance(data, dict):
+            job["payload"] = data
+        return data
+
+    _read_json._journal_json_cached = True
+    handler_cls._read_json = _read_json
+
+
+def _wrap_save_data(g: dict) -> None:
+    orig_save = g.get("save_data")
+    if not callable(orig_save) or getattr(orig_save, "_journal_grade_wrapped", False):
+        return
+
+    def save_data(data):
+        job = _grade_job.get()
+        if job and isinstance(job.get("payload"), dict):
+            _apply_grade_to_data(g, data, str(job.get("path") or ""), job["payload"])
+        orig_save(data)
+
+    save_data._journal_grade_wrapped = True
+    g["save_data"] = save_data
+
+
 def install(g: dict) -> bool:
     handler_cls = _find_handler(g)
     if handler_cls is None:
         return False
     orig_get = handler_cls.do_GET
     orig_post = getattr(handler_cls, "do_POST", None)
+    _wrap_read_json(handler_cls)
+    _wrap_save_data(g)
 
     def do_GET(self):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
@@ -174,57 +278,71 @@ def install(g: dict) -> bool:
 
     def do_POST(self):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
-        if path != "/api/banks/delete":
-            if orig_post:
-                return orig_post(self)
-            return None
-        try:
-            user = self._user() if hasattr(self, "_user") else None
-            if not user:
-                _send_json(self, {"ok": False, "error": "Нужно войти"}, 401)
-                return
-            if user.get("role") != "teacher":
-                _send_json(self, {"ok": False, "error": "Набор удаляет учитель"}, 403)
-                return
-            payload = _request_json(self)
-            if payload is None:
-                return
-            bank_id = str((payload or {}).get("id") or "")
-            journal = g.get("journal")
-            lock = g.get("DATA_LOCK")
-            acquired = False
+        if path == "/api/banks/delete":
             try:
-                if lock is not None and hasattr(lock, "acquire"):
-                    try:
-                        acquired = bool(lock.acquire(True, 3))
-                    except TypeError:
-                        lock.acquire()
-                        acquired = True
-                data = _load_data(g)
-                error = ""
-                if journal is not None and hasattr(journal, "purge_bank"):
-                    error = journal.purge_bank(data, bank_id) or ""
-                else:
-                    error = "Не получилось удалить набор"
-                if error:
-                    _send_json(self, {"ok": False, "error": error}, 400)
+                user = self._user() if hasattr(self, "_user") else None
+                if not user:
+                    _send_json(self, {"ok": False, "error": "Нужно войти"}, 401)
                     return
-                _save_data(g, data)
-                banks = journal.list_banks() if journal is not None and hasattr(journal, "list_banks") else []
-                students = _students_payload(g, data).get("students") or []
-            finally:
-                if acquired:
-                    try:
-                        lock.release()
-                    except Exception:
-                        pass
-            _send_json(self, {"ok": True, "banks": banks, "students": students})
-        except Exception as exc:
-            _write_error(exc)
+                if user.get("role") != "teacher":
+                    _send_json(self, {"ok": False, "error": "Набор удаляет учитель"}, 403)
+                    return
+                payload = _request_json(self)
+                if payload is None:
+                    return
+                bank_id = str((payload or {}).get("id") or "")
+                journal = g.get("journal")
+                lock = g.get("DATA_LOCK")
+                acquired = False
+                try:
+                    if lock is not None and hasattr(lock, "acquire"):
+                        try:
+                            acquired = bool(lock.acquire(True, 3))
+                        except TypeError:
+                            lock.acquire()
+                            acquired = True
+                    data = _load_data(g)
+                    error = ""
+                    if journal is not None and hasattr(journal, "purge_bank"):
+                        error = journal.purge_bank(data, bank_id) or ""
+                    else:
+                        error = "Не получилось удалить набор"
+                    if error:
+                        _send_json(self, {"ok": False, "error": error}, 400)
+                        return
+                    _save_data(g, data)
+                    banks = journal.list_banks() if journal is not None and hasattr(journal, "list_banks") else []
+                    students = _students_payload(g, data).get("students") or []
+                finally:
+                    if acquired:
+                        try:
+                            lock.release()
+                        except Exception:
+                            pass
+                _send_json(self, {"ok": True, "banks": banks, "students": students})
+            except Exception as exc:
+                _write_error(exc)
+                try:
+                    _send_json(self, {"ok": False, "error": "Не получилось удалить набор"}, 500)
+                except Exception:
+                    return
+            return
+        if path in ("/api/students", "/api/schedule"):
+            job = {"path": path, "payload": None}
+            token = _grade_job.set(job)
             try:
-                _send_json(self, {"ok": False, "error": "Не получилось удалить набор"}, 500)
-            except Exception:
-                return
+                if orig_post:
+                    orig_post(self)
+                payload = job.get("payload")
+                if not isinstance(payload, dict):
+                    payload = getattr(self, "_journal_json_cache", None)
+                _persist_student_grade(g, path, payload)
+            finally:
+                _grade_job.reset(token)
+            return
+        if orig_post:
+            return orig_post(self)
+        return None
 
     handler_cls.do_GET = do_GET
     handler_cls.do_POST = do_POST

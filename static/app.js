@@ -47,6 +47,7 @@ const ROW_COPY_KEYS = [
 function ensureTableCopyButtons() {
   const actions = document.getElementById("table-actions");
   if (!actions) return;
+  const bottom = document.getElementById("table-actions-bottom") || actions;
   const settings = document.getElementById("settings-btn");
   if (!document.getElementById("copy-table-btn")) {
     const button = document.createElement("button");
@@ -54,7 +55,7 @@ function ensureTableCopyButtons() {
     button.className = "secondary-btn hidden";
     button.type = "button";
     button.textContent = "Копировать таблицу";
-    actions.insertBefore(button, settings || null);
+    bottom.appendChild(button);
   }
   if (!document.getElementById("paste-table-btn")) {
     const button = document.createElement("button");
@@ -63,7 +64,7 @@ function ensureTableCopyButtons() {
     button.type = "button";
     button.disabled = true;
     button.textContent = "Вставить таблицу";
-    actions.insertBefore(button, settings || null);
+    bottom.appendChild(button);
   }
 }
 
@@ -94,6 +95,82 @@ function ensureEndDateField() {
 }
 
 ensureEndDateField();
+
+function ensureGradeField() {
+  if (document.getElementById("student-grade")) return;
+  const name = document.getElementById("student-name");
+  const nameLabel = name && name.closest("label");
+  if (!nameLabel || !nameLabel.parentNode) return;
+  const label = document.createElement("label");
+  label.appendChild(document.createTextNode("Класс"));
+  const input = document.createElement("input");
+  input.id = "student-grade";
+  input.type = "text";
+  input.name = "grade";
+  input.required = true;
+  input.maxLength = 24;
+  input.placeholder = "например 10";
+  input.autocomplete = "off";
+  label.appendChild(input);
+  nameLabel.parentNode.insertBefore(label, nameLabel.nextSibling);
+}
+
+ensureGradeField();
+
+function ensureTableActionLayout() {
+  const actions = document.getElementById("table-actions");
+  if (!actions) return;
+  let top = document.getElementById("table-actions-top");
+  let bottom = document.getElementById("table-actions-bottom");
+  if (!top) {
+    top = document.createElement("div");
+    top.id = "table-actions-top";
+    top.className = "table-actions-row";
+    actions.insertBefore(top, actions.firstChild);
+  }
+  if (!bottom) {
+    bottom = document.createElement("div");
+    bottom.id = "table-actions-bottom";
+    bottom.className = "table-actions-row";
+    if (top.nextSibling) actions.insertBefore(bottom, top.nextSibling);
+    else actions.appendChild(bottom);
+  }
+  const preview = document.getElementById("preview-btn");
+  const exitPreview = document.getElementById("exit-preview-btn");
+  const findWrap = document.getElementById("find-wrap") || document.getElementById("find-row-btn");
+  const settings = document.getElementById("settings-btn");
+  const copy = document.getElementById("copy-table-btn");
+  const paste = document.getElementById("paste-table-btn");
+  if (preview) top.appendChild(preview);
+  if (exitPreview) top.appendChild(exitPreview);
+  if (findWrap) top.appendChild(findWrap);
+  if (settings) top.appendChild(settings);
+  if (copy) bottom.appendChild(copy);
+  if (paste) bottom.appendChild(paste);
+}
+
+ensureTableActionLayout();
+
+function gradeTagLabel(grade) {
+  const raw = String(grade || "").trim();
+  if (!raw) return "";
+  if (/класс/i.test(raw)) return raw.toUpperCase();
+  return `${raw.toUpperCase()} КЛАСС`;
+}
+
+function updateBrandPill() {
+  const tag = document.getElementById("brand-tag") || document.querySelector(".topbar .brand-tag");
+  if (!tag) return;
+  const inStudentSheet = state.view === "table" || state.view === "practice";
+  if (!inStudentSheet) {
+    tag.textContent = "10–11 КЛАССЫ";
+    tag.classList.remove("hidden");
+    return;
+  }
+  const label = gradeTagLabel(currentStudent() && currentStudent().grade);
+  tag.textContent = label;
+  tag.classList.toggle("hidden", !label);
+}
 
 const state = {
   students: [],
@@ -164,6 +241,7 @@ const els = {
   modal: document.getElementById("modal"),
   studentForm: document.getElementById("student-form"),
   studentName: document.getElementById("student-name"),
+  studentGrade: document.getElementById("student-grade"),
   startDate: document.getElementById("start-date"),
   endDate: document.getElementById("end-date"),
   weekday0: document.getElementById("weekday-0"),
@@ -517,9 +595,12 @@ function updateModeChrome() {
   if (els.previewBtn) {
     els.previewBtn.classList.toggle("hidden", !isTeacherUi() || !inStudentTable);
   }
+  ensureTableActionLayout();
   updateLogoutButton();
+  updateBrandPill();
   updateTableCopyButtons();
   document.body.classList.toggle("student-preview", isStudentView());
+  document.body.classList.toggle("table-open", state.view === "table" || state.view === "practice");
 }
 
 function updateLogoutButton() {
@@ -1070,6 +1151,7 @@ function fillStudentForm(student) {
   const schedule = (student && student.schedule) || {};
   const slots = Array.isArray(schedule.slots) ? schedule.slots : [];
   els.studentName.value = student ? student.name : "";
+  if (els.studentGrade) els.studentGrade.value = student ? student.grade || "" : "";
   els.studentForm.template.value = student && student.template === "twice" ? "twice" : "once";
   els.startDate.value = schedule.startDate || "2026-09-03";
   els.weekday0.value = String(slots[0] ? slots[0].weekday : 3);
@@ -2116,8 +2198,13 @@ els.studentForm.addEventListener("submit", async (event) => {
   }
   els.modalError.textContent = "";
   const name = els.studentName.value.trim();
+  const grade = els.studentGrade ? els.studentGrade.value.trim() : "";
   if (!name) {
     els.modalError.textContent = "Нужно имя ученика";
+    return;
+  }
+  if (!grade) {
+    els.modalError.textContent = "Укажите класс ученика";
     return;
   }
   const { template, slots, startDate, endDate } = collectCreateSlots();
@@ -2135,6 +2222,7 @@ els.studentForm.addEventListener("submit", async (event) => {
         body: JSON.stringify({
           id: state.settingsStudentId,
           name,
+          grade,
           template,
           startDate,
           endDate,
@@ -2152,7 +2240,7 @@ els.studentForm.addEventListener("submit", async (event) => {
     }
     const data = await api("/api/students", {
       method: "POST",
-      body: JSON.stringify({ name, template, startDate, endDate, slots }),
+      body: JSON.stringify({ name, grade, template, startDate, endDate, slots }),
     });
     state.students.push(data.student);
     state.currentId = data.student.id;

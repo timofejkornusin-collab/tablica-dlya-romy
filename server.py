@@ -1009,6 +1009,10 @@ class Handler(SimpleHTTPRequestHandler):
         if not name:
             self._send_json({"ok": False, "error": "Нужно имя ученика"}, 400)
             return
+        grade = journal.clean_grade(payload.get("grade"))
+        if not grade:
+            self._send_json({"ok": False, "error": "Укажите класс ученика"}, 400)
+            return
         login = login.replace(" ", "")
         start = journal.parse_iso_date(str(payload.get("startDate") or ""))
         slots = journal.clean_slots(payload.get("slots"), template)
@@ -1032,6 +1036,7 @@ class Handler(SimpleHTTPRequestHandler):
             student = {
                 "id": str(uuid.uuid4()),
                 "name": name,
+                "grade": grade,
                 "login": login,
                 "template": template,
                 "rows": [journal.empty_row() for _ in range(5)],
@@ -1217,6 +1222,9 @@ class Handler(SimpleHTTPRequestHandler):
             name = str(payload.get("name") or "").strip()
             if name:
                 student["name"] = name
+            grade = journal.clean_grade(payload.get("grade"))
+            if grade:
+                student["grade"] = grade
             student["schedule"] = {
                 "startDate": start.isoformat(),
                 "endDate": end.isoformat(),

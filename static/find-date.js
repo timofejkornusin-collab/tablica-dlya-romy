@@ -50,9 +50,11 @@
     btn.type = "button";
     btn.className = "secondary-btn";
     btn.textContent = "Найти";
+    var top = $("table-actions-top");
     var actions = $("table-actions");
     var bar = document.querySelector(".topbar-right");
-    if (actions) actions.appendChild(btn);
+    if (top) top.appendChild(btn);
+    else if (actions) actions.appendChild(btn);
     else if (bar) bar.appendChild(btn);
     return btn;
   }
