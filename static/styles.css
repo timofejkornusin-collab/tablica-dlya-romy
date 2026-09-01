@@ -104,11 +104,33 @@ body {
 }
 
 body.table-open .topbar {
+  align-items: stretch;
+}
+
+body.table-open .topbar-left {
   align-items: flex-start;
 }
 
+body.table-open #back-btn {
+  align-self: center;
+}
+
 body.table-open .topbar-right {
-  align-items: center;
+  align-items: flex-start;
+}
+
+body.table-open .brand-container #page-title {
+  order: 1;
+}
+
+body.table-open .brand-container .brand-pill {
+  order: 2;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+body.table-open .brand-container #page-subtitle {
+  order: 3;
 }
 
 #table-actions {
@@ -1876,6 +1898,10 @@ body.is-busy {
   .topbar-right {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  body.table-open #back-btn {
+    align-self: stretch;
   }
 
   .topbar-right {

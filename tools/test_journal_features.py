@@ -348,7 +348,17 @@ class BackToListButtonTest(unittest.TestCase):
         self.assertIn('id="back-btn"', html)
         self.assertIn("← К списку", html)
         self.assertIn("#back-btn {\n  white-space: nowrap;\n  flex: 0 0 auto;\n}", styles)
-        self.assertIn("prompt-split1", html)
+        self.assertIn("header-pill1", html)
+
+
+class TableHeaderLayoutTest(unittest.TestCase):
+    def test_table_header_centers_back_and_puts_pill_under_name(self) -> None:
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("body.table-open .topbar {\n  align-items: stretch;\n}", styles)
+        self.assertIn("body.table-open #back-btn {\n  align-self: center;\n}", styles)
+        self.assertIn("body.table-open .brand-container #page-title {\n  order: 1;\n}", styles)
+        self.assertIn("body.table-open .brand-container .brand-pill {\n  order: 2;", styles)
+        self.assertIn("body.table-open .topbar-left {\n  align-items: flex-start;\n}", styles)
 
 
 class LogoutOnListOnlyTest(unittest.TestCase):
@@ -360,7 +370,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=prompt-split1", html)
+        self.assertIn("app.js?v=header-pill1", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):
