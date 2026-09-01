@@ -348,7 +348,18 @@ class BackToListButtonTest(unittest.TestCase):
         self.assertIn('id="back-btn"', html)
         self.assertIn("← К списку", html)
         self.assertIn("#back-btn {\n  white-space: nowrap;\n  flex: 0 0 auto;\n}", styles)
-        self.assertIn("prompt-split1", html)
+        self.assertIn("header-pill1", html)
+
+
+class TableHeaderLayoutTest(unittest.TestCase):
+    def test_table_header_centers_back_and_puts_pill_under_name(self) -> None:
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("body.table-open .topbar {\n  display: grid;", styles)
+        self.assertIn("body.table-open .topbar-left {\n  display: contents;\n}", styles)
+        self.assertIn("body.table-open #back-btn {\n  align-self: center;\n}", styles)
+        self.assertIn("body.table-open .brand-container #page-title {\n  order: 1;\n}", styles)
+        self.assertIn("body.table-open .brand-container .brand-pill {\n  order: 2;", styles)
+        self.assertIn("body.table-open .brand-container {\n  align-self: start;", styles)
 
 
 class LogoutOnListOnlyTest(unittest.TestCase):
@@ -360,7 +371,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=prompt-split1", html)
+        self.assertIn("app.js?v=header-pill1", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):
@@ -413,7 +424,8 @@ class StudentGradeToolbarTest(unittest.TestCase):
         self.assertIn('document.body.classList.toggle("table-open"', app_js)
         self.assertIn("Укажите класс ученика", app_js)
         self.assertIn("#table-actions {\n  display: flex;\n  flex-direction: column;", styles)
-        self.assertNotIn("display: contents;", styles)
+        self.assertNotIn("#table-actions {\n  display: contents;", styles)
+        self.assertIn("body.table-open .topbar-left {\n  display: contents;\n}", styles)
         self.assertIn('var top = $("table-actions-top");', find_js)
         self.assertIn("if (top) top.appendChild(btn);", find_js)
 

@@ -104,11 +104,42 @@ body {
 }
 
 body.table-open .topbar {
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+body.table-open .topbar-left {
+  display: contents;
+}
+
+body.table-open #back-btn {
+  align-self: center;
+}
+
+body.table-open .brand-container {
+  align-self: start;
+  justify-self: start;
+  min-width: 0;
 }
 
 body.table-open .topbar-right {
-  align-items: center;
+  align-self: start;
+  justify-self: end;
+}
+
+body.table-open .brand-container #page-title {
+  order: 1;
+}
+
+body.table-open .brand-container .brand-pill {
+  order: 2;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+body.table-open .brand-container #page-subtitle {
+  order: 3;
 }
 
 #table-actions {
@@ -1867,15 +1898,37 @@ body.is-busy {
   .topbar {
     flex-direction: column;
     align-items: stretch;
+    display: flex;
     gap: 12px;
     padding: 14px;
     margin-bottom: 14px;
+  }
+
+  body.table-open .topbar {
+    display: flex;
+    grid-template-columns: none;
   }
 
   .topbar-left,
   .topbar-right {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  body.table-open .topbar-left {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  body.table-open #back-btn {
+    align-self: stretch;
+  }
+
+  body.table-open .brand-container,
+  body.table-open .topbar-right {
+    align-self: stretch;
+    justify-self: stretch;
   }
 
   .topbar-right {
