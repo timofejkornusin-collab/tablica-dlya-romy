@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=cards-trim1" />
+    <link rel="stylesheet" href="styles.css?v=class-bar1" />
     <link rel="stylesheet" href="mobile.css?v=theory-grow1" />
     <link rel="stylesheet" href="practice-scales.css?v=2" />
   </head>
@@ -39,10 +39,10 @@
         <div class="topbar-left">
           <button id="back-btn" class="ghost-btn hidden" type="button">← К списку</button>
           <div class="brand-container">
-            <div class="brand-pill">
+            <div class="brand-pill" id="brand-pill">
               <span class="brand-feather">✒</span>
               <span class="brand-name">РУССКИЙ ЯЗЫК</span>
-              <span class="brand-tag">10–11 КЛАССЫ</span>
+              <span class="brand-tag" id="brand-tag">10–11 КЛАССЫ</span>
             </div>
             <h1 id="page-title">Журнал занятий</h1>
             <p id="page-subtitle" class="subtitle hidden"></p>
@@ -51,6 +51,18 @@
         <div class="topbar-right">
           <span id="save-status" class="save-status" aria-live="polite"></span>
           <div id="table-actions" class="hidden">
+            <div id="table-actions-top" class="table-actions-row">
+              <button id="preview-btn" class="secondary-btn hidden" type="button">Как видит ученик</button>
+              <button id="exit-preview-btn" class="secondary-btn hidden" type="button">Вернуться к учителю</button>
+              <div id="find-wrap" class="find-wrap">
+                <button id="find-row-btn" class="secondary-btn" type="button">Найти</button>
+              </div>
+              <button id="settings-btn" class="secondary-btn hidden" type="button">Настройки</button>
+            </div>
+            <div id="table-actions-bottom" class="table-actions-row">
+              <button id="copy-table-btn" class="secondary-btn hidden" type="button">Копировать таблицу</button>
+              <button id="paste-table-btn" class="secondary-btn hidden" type="button" disabled>Вставить таблицу</button>
+            </div>
             <label class="template-switch hidden" id="template-wrap">
               Шаблон
               <select id="template-select">
@@ -58,15 +70,7 @@
                 <option value="twice">2 раза в неделю</option>
               </select>
             </label>
-            <div id="find-wrap" class="find-wrap">
-              <button id="find-row-btn" class="secondary-btn" type="button">Найти</button>
-            </div>
-            <button id="copy-table-btn" class="secondary-btn hidden" type="button">Копировать таблицу</button>
-            <button id="paste-table-btn" class="secondary-btn hidden" type="button" disabled>Вставить таблицу</button>
-            <button id="settings-btn" class="secondary-btn hidden" type="button">Настройки</button>
           </div>
-          <button id="preview-btn" class="secondary-btn hidden" type="button">Как видит ученик</button>
-          <button id="exit-preview-btn" class="secondary-btn hidden" type="button">Вернуться к учителю</button>
           <button id="add-student-btn" class="primary-btn" type="button">Добавить ученика</button>
           <button id="logout-btn" class="secondary-btn hidden" type="button">Выйти</button>
         </div>
@@ -101,6 +105,10 @@
             <label>
               Имя
               <input id="student-name" type="text" name="name" required maxlength="80" placeholder="Например, Рома" autocomplete="off" />
+            </label>
+            <label>
+              Класс
+              <input id="student-grade" type="text" name="grade" required maxlength="24" placeholder="например 10" autocomplete="off" />
             </label>
             <fieldset>
               <legend>Как часто занимаемся</legend>
@@ -213,8 +221,8 @@
       </form>
     </div>
 
-    <script src="app.js?v=cards-trim1"></script>
-    <script src="find-date.js?v=2"></script>
+    <script src="app.js?v=class-bar1"></script>
+    <script src="find-date.js?v=class-bar1"></script>
     <script src="practice-page.js?v=2"></script>
     <script src="practice-scales.js?v=2"></script>
     <script src="practice-reveal.js?v=1"></script>

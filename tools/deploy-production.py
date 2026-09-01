@@ -46,6 +46,7 @@ REQUIRED = (
     "static/practice-scales.js",
     "static/practice-scales.css",
     "static/practice-page.js",
+    "static/find-date.js",
     "tools/production_students_safety.py",
 )
 
@@ -82,12 +83,16 @@ APP_MARKERS = (
     "renderStudentTextCell",
     "attach-file-label",
     "updateLogoutButton",
+    "ensureTableActionLayout",
+    "updateBrandPill",
+    "ensureGradeField",
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=cards-trim1",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=class-bar1",
     r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=theory-grow1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=cards-trim1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=class-bar1",
+    r'find-date\.js(?:\?v=[^"]*)?': "find-date.js?v=class-bar1",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
     r'practice-scales\.js(?:\?v=[^"]*)?': "practice-scales.js?v=2",
@@ -371,6 +376,7 @@ def require_python_and_markers() -> None:
         or "purge_bank" not in journal_py
         or "attach_row_file" not in journal_py
         or "MAX_THEORY_FILES" not in journal_py
+        or "clean_grade" not in journal_py
     ):
         fail("ОШИБКА: загружена не та версия journal.py. Сайт не изменён.")
 
@@ -391,6 +397,7 @@ def backup_current() -> None:
     copy_if_exists(STATIC_ROOT / "practice-scales.js", BACKUP / "static" / "practice-scales.js")
     copy_if_exists(STATIC_ROOT / "practice-scales.css", BACKUP / "static" / "practice-scales.css")
     copy_if_exists(STATIC_ROOT / "practice-page.js", BACKUP / "static" / "practice-page.js")
+    copy_if_exists(STATIC_ROOT / "find-date.js", BACKUP / "static" / "find-date.js")
     copy_if_exists(APP_ROOT / "data" / "students.json", BACKUP / "data" / "students.json")
 
 
@@ -404,6 +411,7 @@ def install_stage() -> None:
         install_file(STAGE / "static" / "practice-scales.js", STATIC_ROOT / "practice-scales.js")
         install_file(STAGE / "static" / "practice-scales.css", STATIC_ROOT / "practice-scales.css")
         install_file(STAGE / "static" / "practice-page.js", STATIC_ROOT / "practice-page.js")
+        install_file(STAGE / "static" / "find-date.js", STATIC_ROOT / "find-date.js")
         install_file(
             STAGE / "tools" / "production_students_safety.py",
             APP_ROOT / "production_students_safety.py",
@@ -419,7 +427,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "cards-trim1" in installed_index else "0"
+    index_marker = "1" if "class-bar1" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -431,7 +439,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("cards-trim1"))
+        index_marker = str(live_index.count("class-bar1"))
         api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)

@@ -37,7 +37,7 @@ class DeployProductionTest(unittest.TestCase):
         (self.stage / "tools").mkdir(parents=True)
         shutil.copy2(ROOT / "tools" / "production_students_safety.py", self.stage / "tools" / "production_students_safety.py")
         (self.stage / "journal.py").write_text(
-            "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\ndef public_student_summary(student):\n    return student\ndef purge_bank(data, bank_id):\n    return ''\ndef attach_row_file(row, field, stored, original):\n    return ''\nMAX_THEORY_FILES = 12\n",
+            "VALUE = 'stage-journal'\ndef end_date_from_request_payload():\n    return None\ndef public_students_payload(students):\n    return {'students': []}\ndef public_student_summary(student):\n    return student\ndef purge_bank(data, bank_id):\n    return ''\ndef attach_row_file(row, field, stored, original):\n    return ''\ndef clean_grade(raw):\n    return str(raw or '')[:24]\nMAX_THEORY_FILES = 12\n",
             encoding="utf-8",
         )
         (self.stage / "pdf_import.py").write_text("VALUE = 'stage-pdf'\n", encoding="utf-8")
@@ -46,11 +46,15 @@ class DeployProductionTest(unittest.TestCase):
             "function restorePracticeScroll() {}\nconst keepScroll = true;\n"
             "function applyCopiedTable() {}\nfunction applyCopiedRow() {}\nfunction bumpSaveEpoch() {}\n"
             "function syncStartDateWeekday() {}\nconst keepRicher = true;\n"
-            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\nconst attachLabel = 'attach-file-label';\nfunction updateLogoutButton() {}\n",
+            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\nconst attachLabel = 'attach-file-label';\nfunction updateLogoutButton() {}\nfunction ensureTableActionLayout() {}\nfunction updateBrandPill() {}\nfunction ensureGradeField() {}\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "practice-page.js").write_text(
             "document.body.classList.toggle('practice-open');\n",
+            encoding="utf-8",
+        )
+        (self.stage / "static" / "find-date.js").write_text(
+            "var top = 'table-actions-top';\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "styles.css").write_text(".stage-styles {}\n", encoding="utf-8")
@@ -66,6 +70,7 @@ class DeployProductionTest(unittest.TestCase):
             '<link rel="stylesheet" href="mobile.css?v=old" />\n'
             '<link rel="stylesheet" href="practice-scales.css?v=1" />\n'
             '<script src="app.js?v=old"></script>\n'
+            '<script src="find-date.js?v=old"></script>\n'
             '<script src="practice-page.js?v=1"></script>\n'
             '<script src="practice-scales.js?v=1"></script>\n',
             encoding="utf-8",
@@ -94,9 +99,10 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=cards-trim1", text)
+        self.assertIn("styles.css?v=class-bar1", text)
         self.assertIn("mobile.css?v=theory-grow1", text)
-        self.assertIn("app.js?v=cards-trim1", text)
+        self.assertIn("app.js?v=class-bar1", text)
+        self.assertIn("find-date.js?v=class-bar1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
         self.assertIn("practice-scales.js?v=2", text)
@@ -212,8 +218,9 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("journal-students-safety-begin", server_text)
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("cards-trim1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("class-bar1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
+        self.assertTrue((self.app / "static" / "find-date.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
 
     def test_python_script_runs_with_windows_crlf(self) -> None:
@@ -377,6 +384,63 @@ class ProductionStudentsSafetyTest(unittest.TestCase):
         other.path = "/api/login"
         with self.assertRaises(RuntimeError):
             Handler.do_POST(other)
+
+    def test_persists_student_grade_after_create_and_schedule_post(self) -> None:
+        import importlib.util
+        import threading
+
+        spec = importlib.util.spec_from_file_location(
+            "production_students_safety",
+            ROOT / "tools" / "production_students_safety.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        class Handler:
+            def __init__(self) -> None:
+                self.path = "/api/students"
+                self.payload = {"name": "рома", "grade": " 10 "}
+
+            def do_GET(self) -> None:
+                raise RuntimeError("old get boom")
+
+            def do_POST(self) -> None:
+                self._read_json()
+
+            def _read_json(self):
+                return self.payload
+
+        data_store = {"students": [{"id": "1", "name": "рома"}]}
+        journal_mod = type("Journal", (), {})()
+        journal_mod.clean_grade = staticmethod(lambda raw: " ".join(str(raw or "").split())[:24])
+        journal_mod.public_students_payload = staticmethod(lambda students: {"students": students or []})
+        installed = module.install(
+            {
+                "Handler": Handler,
+                "load_data": lambda: data_store,
+                "save_data": lambda data: data_store.update(data),
+                "journal": journal_mod,
+                "DATA_LOCK": threading.Lock(),
+            }
+        )
+        self.assertTrue(installed)
+
+        create = Handler()
+        Handler.do_POST(create)
+        self.assertEqual(data_store["students"][0]["grade"], "10")
+
+        schedule = Handler()
+        schedule.path = "/api/schedule"
+        schedule.payload = {"id": "1", "grade": "11"}
+        Handler.do_POST(schedule)
+        self.assertEqual(data_store["students"][0]["grade"], "11")
+
+        paste = Handler()
+        paste.path = "/api/schedule"
+        paste.payload = {"id": "1", "name": "рома"}
+        Handler.do_POST(paste)
+        self.assertEqual(data_store["students"][0]["grade"], "11")
 
     def test_safety_block_is_idempotent(self) -> None:
         self._temp = tempfile.TemporaryDirectory()

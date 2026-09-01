@@ -45,6 +45,11 @@ WEEKDAY_NAMES = (
 )
 
 
+def clean_grade(raw) -> str:
+    text = " ".join(str(raw or "").split())
+    return text[:24]
+
+
 def empty_row(date_str: str = "") -> dict:
     row = {key: "" for key in ROW_KEYS}
     row["date"] = date_str
@@ -775,6 +780,7 @@ def public_student_stub(student: dict) -> dict:
     return {
         "id": student.get("id"),
         "name": str(student.get("name") or ""),
+        "grade": clean_grade(student.get("grade")),
         "template": "twice" if student.get("template") == "twice" else "once",
         "login": str(student.get("login") or ""),
         "password_is_initial": bool(student.get("password_is_initial")),

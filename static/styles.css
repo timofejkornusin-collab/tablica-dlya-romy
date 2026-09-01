@@ -103,11 +103,40 @@ body {
   justify-content: flex-end;
 }
 
+body.table-open .topbar {
+  align-items: flex-start;
+}
+
+body.table-open .topbar-right {
+  align-items: center;
+}
+
 #table-actions {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
+}
+
+.table-actions-row {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.table-actions-row .secondary-btn {
+  white-space: nowrap;
+}
+
+.find-wrap {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.find-wrap .secondary-btn {
+  width: 100%;
 }
 
 .brand-container {
@@ -1837,7 +1866,35 @@ textarea[readonly] {
   }
 
   #table-actions {
-    display: contents;
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .table-actions-row {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    gap: 8px;
+  }
+
+  #table-actions-top > *,
+  #table-actions-bottom > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  #table-actions .secondary-btn,
+  .find-wrap .secondary-btn {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+    padding-left: 8px;
+    padding-right: 8px;
   }
 
   .topbar-right .primary-btn,

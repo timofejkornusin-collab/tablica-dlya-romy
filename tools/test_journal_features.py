@@ -348,7 +348,7 @@ class BackToListButtonTest(unittest.TestCase):
         self.assertIn('id="back-btn"', html)
         self.assertIn("← К списку", html)
         self.assertIn("#back-btn {\n  white-space: nowrap;\n  flex: 0 0 auto;\n}", styles)
-        self.assertIn("cards-trim1", html)
+        self.assertIn("class-bar1", html)
 
 
 class LogoutOnListOnlyTest(unittest.TestCase):
@@ -360,7 +360,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=cards-trim1", html)
+        self.assertIn("app.js?v=class-bar1", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):
@@ -376,6 +376,46 @@ class CardActionsTrimTest(unittest.TestCase):
         self.assertIn('id="settings-btn"', html)
         self.assertIn(">Настройки</button>", html)
 
+
+class StudentGradeToolbarTest(unittest.TestCase):
+    def test_clean_grade_and_public_payload(self) -> None:
+        self.assertEqual(journal.clean_grade("  10  "), "10")
+        self.assertEqual(journal.clean_grade(None), "")
+        self.assertEqual(len(journal.clean_grade("x" * 40)), 24)
+        public = journal.public_student_stub({"id": "1", "name": "рома", "grade": "10"})
+        self.assertEqual(public["grade"], "10")
+        self.assertEqual(journal.public_student({"id": "1", "name": "рома", "grade": "11"})["grade"], "11")
+
+    def test_table_header_has_class_field_and_two_button_rows(self) -> None:
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        find_js = (ROOT / "static" / "find-date.js").read_text(encoding="utf-8")
+        self.assertIn('id="student-grade"', html)
+        self.assertIn("Класс", html)
+        self.assertIn('id="brand-tag"', html)
+        self.assertIn('id="table-actions-top"', html)
+        self.assertIn('id="table-actions-bottom"', html)
+        top = html.split('id="table-actions-top"', 1)[1].split('id="table-actions-bottom"', 1)[0]
+        bottom = html.split('id="table-actions-bottom"', 1)[1].split("</div>", 1)[0]
+        self.assertIn("Как видит ученик", top)
+        self.assertIn(">Найти</button>", top)
+        self.assertIn("Настройки", top)
+        self.assertNotIn("Копировать таблицу", top)
+        self.assertIn("Копировать таблицу", bottom)
+        self.assertIn("Вставить таблицу", bottom)
+        self.assertNotIn("Как видит ученик", bottom)
+        self.assertIn("function ensureTableActionLayout()", app_js)
+        self.assertIn("function updateBrandPill()", app_js)
+        self.assertIn("function gradeTagLabel(", app_js)
+        self.assertIn("function ensureGradeField()", app_js)
+        self.assertIn('tag.textContent = "10–11 КЛАССЫ"', app_js)
+        self.assertIn('document.body.classList.toggle("table-open"', app_js)
+        self.assertIn("Укажите класс ученика", app_js)
+        self.assertIn("#table-actions {\n  display: flex;\n  flex-direction: column;", styles)
+        self.assertNotIn("display: contents;", styles)
+        self.assertIn('var top = $("table-actions-top");', find_js)
+        self.assertIn("if (top) top.appendChild(btn);", find_js)
 
 
 class MobileAttachButtonTest(unittest.TestCase):
