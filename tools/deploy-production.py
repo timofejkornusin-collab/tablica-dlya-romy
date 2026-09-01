@@ -86,12 +86,14 @@ APP_MARKERS = (
     "ensureTableActionLayout",
     "updateBrandPill",
     "ensureGradeField",
+    "file-pick",
+    "needsImport",
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=class-bar1",
-    r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=theory-grow1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=class-bar1",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=practice-fix1",
+    r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=practice-fix1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=practice-fix1",
     r'find-date\.js(?:\?v=[^"]*)?': "find-date.js?v=class-bar1",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
@@ -283,6 +285,30 @@ def patch_server(path: Path) -> None:
             'if field == "practice":',
         ),
         (
+            "if field == \"practice\" and suffix == \".pdf\":\n"
+            "            try:\n"
+            "                parsed_bank = pdf_import.import_pdf_bytes(\n"
+            "                    uploaded[\"data\"], original, journal.pdf_bank_id(uploaded[\"data\"])\n"
+            "                )",
+            "if False:\n"
+            "            try:\n"
+            "                parsed_bank = pdf_import.import_pdf_bytes(\n"
+            "                    uploaded[\"data\"], original, journal.pdf_bank_id(uploaded[\"data\"])\n"
+            "                )",
+        ),
+        (
+            "if field == 'practice' and suffix == '.pdf':\n"
+            "            try:\n"
+            "                parsed_bank = pdf_import.import_pdf_bytes(\n"
+            "                    uploaded['data'], original, journal.pdf_bank_id(uploaded['data'])\n"
+            "                )",
+            "if False:\n"
+            "            try:\n"
+            "                parsed_bank = pdf_import.import_pdf_bytes(\n"
+            "                    uploaded['data'], original, journal.pdf_bank_id(uploaded['data'])\n"
+            "                )",
+        ),
+        (
             "old_id = safe_upload_id(str(rows[row_index].get(f\"{field}FileId\") or \"\"))\n"
             "            rows[row_index][f\"{field}FileId\"] = stored\n"
             "            rows[row_index][f\"{field}FileName\"] = original",
@@ -427,7 +453,7 @@ def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "class-bar1" in installed_index else "0"
+    index_marker = "1" if "practice-fix1" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -439,7 +465,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("class-bar1"))
+        index_marker = str(live_index.count("practice-fix1"))
         api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)

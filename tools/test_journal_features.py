@@ -348,7 +348,7 @@ class BackToListButtonTest(unittest.TestCase):
         self.assertIn('id="back-btn"', html)
         self.assertIn("← К списку", html)
         self.assertIn("#back-btn {\n  white-space: nowrap;\n  flex: 0 0 auto;\n}", styles)
-        self.assertIn("class-bar1", html)
+        self.assertIn("practice-fix1", html)
 
 
 class LogoutOnListOnlyTest(unittest.TestCase):
@@ -360,7 +360,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=class-bar1", html)
+        self.assertIn("app.js?v=practice-fix1", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):
@@ -427,7 +427,7 @@ class MobileAttachButtonTest(unittest.TestCase):
         self.assertIn("td input:not(.visually-hidden)", styles)
         self.assertIn("td input:not(.visually-hidden)", mobile)
         self.assertIn("td input.visually-hidden", mobile)
-        self.assertIn(".file-corner,\n  .practice-upload {\n    position: static;\n    display: inline-flex;\n    width: 100%;", styles)
+        self.assertIn(".file-corner,\n  .practice-upload {\n    position: relative;\n    display: inline-flex;\n    width: 100%;", styles)
         self.assertIn("min-height: 44px", styles)
         self.assertNotIn("width: 36px;\n    height: 36px;\n    background: var(--navy-soft);", styles)
         self.assertIn(".material-cell.student-material {\n    border: 0;", styles)
@@ -835,6 +835,10 @@ class BankKeyTest(unittest.TestCase):
         self.assertNotIn('from_field in ("homework", "practice", "theory")', server_py)
         self.assertIn('field == "practice" and suffix == ".pdf"', server_py)
         self.assertNotIn('field in ("practice", "theory", "homework") and suffix == ".pdf"', server_py)
+        upload_fn = server_py.split("def _upload_material", 1)[1].split("def _delete_material", 1)[0]
+        self.assertNotIn("pdf_import.import_pdf_bytes", upload_fn)
+        self.assertIn("needsImport", upload_fn)
+        self.assertIn("MAX_PDF_PAGES", (ROOT / "pdf_import.py").read_text(encoding="utf-8"))
 
     def test_app_can_delete_imported_practice_banks(self) -> None:
         app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
@@ -867,6 +871,11 @@ class BankKeyTest(unittest.TestCase):
         self.assertIn("overflow: hidden", styles)
         self.assertIn("text-overflow: ellipsis", styles)
         self.assertIn("flex-shrink: 0", styles)
+        self.assertIn("class=\"file-pick\"", app_js)
+        self.assertIn("Date.now() < bankMenuIgnoreUntil", app_js)
+        self.assertIn("persistCurrent({ quiet: true })", app_js)
+        self.assertIn("/api/import-pdf", app_js)
+        self.assertIn("needsImport", app_js)
 
 
 class CorrectProgressTest(unittest.TestCase):

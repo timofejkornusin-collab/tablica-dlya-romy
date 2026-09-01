@@ -1476,16 +1476,6 @@ class Handler(SimpleHTTPRequestHandler):
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
         dest = UPLOADS_DIR / stored
         dest.write_bytes(uploaded["data"])
-        parsed_bank = None
-        import_error = ""
-        imported_total = 0
-        if field == "practice" and suffix == ".pdf":
-            try:
-                parsed_bank = pdf_import.import_pdf_bytes(
-                    uploaded["data"], original, journal.pdf_bank_id(uploaded["data"])
-                )
-            except Exception as exc:
-                import_error = str(exc) or "Не получилось разобрать PDF."
         with DATA_LOCK:
             data = load_data()
             student = find_student(data, student_id)
@@ -1505,24 +1495,13 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(exc)}, 400)
                 return
             old_id = safe_upload_id(str(old_id or ""))
-            if parsed_bank:
-                try:
-                    journal.save_bank(parsed_bank)
-                    if field == "practice":
-                        rows[row_index]["bankId"] = parsed_bank["id"]
-                        rows[row_index]["importedSource"] = f"file:{stored}"
-                    imported_total = len(parsed_bank.get("tasks") or [])
-                except Exception:
-                    import_error = import_error or "Не получилось сохранить задания из PDF."
             save_data(data)
             if old_id and not upload_is_referenced(data, old_id):
                 (UPLOADS_DIR / old_id).unlink(missing_ok=True)
             saved = public_student(student)
         payload = {"ok": True, "student": saved}
-        if import_error:
-            payload["importError"] = import_error
-        if imported_total:
-            payload["total"] = imported_total
+        if field == "practice" and suffix == ".pdf":
+            payload["needsImport"] = True
         self._send_json(payload)
 
     def _delete_material(self, user: dict) -> None:

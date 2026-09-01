@@ -103,7 +103,7 @@
   }
 
   td textarea,
-  td input:not(.visually-hidden),
+  td input:not(.visually-hidden):not(.file-pick),
   .cell-fill,
   .material-cell,
   .material-cell textarea,
@@ -188,7 +188,7 @@
 
   .file-corner,
   .practice-upload {
-    position: static !important;
+    position: relative !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -199,9 +199,23 @@
     height: auto !important;
     min-height: 44px !important;
     padding: 10px 14px !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     align-self: stretch !important;
     box-sizing: border-box !important;
+  }
+
+  td input.file-pick,
+  .file-pick {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    opacity: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    clip: auto !important;
+    overflow: hidden !important;
+    cursor: pointer !important;
   }
 
   .file-corner .attach-file-label,
