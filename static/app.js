@@ -1176,8 +1176,6 @@ function renderList() {
           </div>
           <div class="card-actions">
             <button class="primary-btn open-table" type="button">Открыть таблицу</button>
-            <button class="secondary-btn preview-student" type="button">Как видит ученик</button>
-            <button class="secondary-btn open-settings" type="button">Настройки</button>
             <button class="danger-btn delete-student" type="button">Удалить</button>
           </div>
         </article>
@@ -2188,14 +2186,6 @@ els.listView.addEventListener("click", async (event) => {
     } catch (error) {
       alert(error.message);
     }
-    return;
-  }
-  if (event.target.closest(".preview-student")) {
-    enterStudentPreview(id);
-    return;
-  }
-  if (event.target.closest(".open-settings")) {
-    openSettings(id);
     return;
   }
   if (event.target.closest(".open-table")) {

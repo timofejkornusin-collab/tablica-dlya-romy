@@ -348,7 +348,7 @@ class BackToListButtonTest(unittest.TestCase):
         self.assertIn('id="back-btn"', html)
         self.assertIn("← К списку", html)
         self.assertIn("#back-btn {\n  white-space: nowrap;\n  flex: 0 0 auto;\n}", styles)
-        self.assertIn("list-nowrap1", html)
+        self.assertIn("cards-trim1", html)
 
 
 class LogoutOnListOnlyTest(unittest.TestCase):
@@ -360,7 +360,21 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=no-table-hint1", html)
+        self.assertIn("app.js?v=cards-trim1", html)
+
+
+class CardActionsTrimTest(unittest.TestCase):
+    def test_cards_keep_open_and_delete_only(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('class="primary-btn open-table"', app_js)
+        self.assertIn('class="danger-btn delete-student"', app_js)
+        self.assertNotIn("preview-student", app_js)
+        self.assertNotIn("open-settings", app_js)
+        self.assertIn('id="preview-btn"', html)
+        self.assertIn("Как видит ученик", html)
+        self.assertIn('id="settings-btn"', html)
+        self.assertIn(">Настройки</button>", html)
 
 
 
