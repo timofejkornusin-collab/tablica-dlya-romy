@@ -903,12 +903,13 @@ function syncStartDateWeekday() {
   els.weekday0.value = String((date.getDay() + 6) % 7);
 }
 
-async function persistCurrent() {
+async function persistCurrent(options = {}) {
   const student = currentStudent();
   if (!student || !isTeacherUi()) return saveChain;
   if (!skipTableDomSync) syncTableRowsFromDom(student);
   const id = student.id;
   const epoch = saveEpochByStudent[id] || 0;
+  const quiet = Boolean(options.quiet);
   const payload = {
     id,
     rows: cloneTableData(Array.isArray(student.rows) ? student.rows : []),
@@ -916,13 +917,13 @@ async function persistCurrent() {
   };
   const run = async () => {
     if ((saveEpochByStudent[id] || 0) !== epoch) return;
-    setSaveStatus("Сохранение…");
+    if (!quiet) setSaveStatus("Сохранение…");
     await api("/api/table", {
       method: "POST",
       body: JSON.stringify(payload),
     });
     if ((saveEpochByStudent[id] || 0) !== epoch) return;
-    setSaveStatus("Сохранено");
+    if (!quiet) setSaveStatus("Сохранено");
   };
   saveChain = saveChain.then(run, run);
   return saveChain;
@@ -1599,7 +1600,7 @@ function renderTable() {
                 <span aria-hidden="true">+</span>
                 <span class="attach-file-short">PDF</span>
                 <span class="attach-file-label">Выдать файл</span>
-                <input type="file" class="visually-hidden" accept="application/pdf,.pdf" data-row="${rowIndex}" data-field="practice" />
+                <input type="file" class="file-pick" accept="application/pdf,.pdf" data-row="${rowIndex}" data-field="practice" />
               </label>`
             : "";
           const practiceFile = row.practiceFileId
@@ -1924,9 +1925,10 @@ function isPdfUrl(url) {
 
 const importFailed = new Set();
 let importInFlight = false;
+let uploadBusy = false;
 
 async function importLinkedPdfs(student) {
-  if (!student || !isTeacherUi() || !state.pdfImport || importInFlight) return false;
+  if (!student || !isTeacherUi() || !state.pdfImport || importInFlight || uploadBusy) return false;
   let changed = false;
   for (let index = 0; index < (student.rows || []).length; index += 1) {
     const row = student.rows[index];
@@ -2021,7 +2023,7 @@ function renderMaterialCell(row, rowIndex, column) {
   const attach = `<label class="file-corner" title="${attachTitle}">
       <span class="file-corner-mark" aria-hidden="true">+</span>
       <span class="attach-file-label">Выдать файл</span>
-      <input type="file" class="visually-hidden" data-row="${rowIndex}" data-field="${field}" ${multiple} />
+      <input type="file" class="file-pick" data-row="${rowIndex}" data-field="${field}" ${multiple} />
     </label>`;
   const remove =
     field === "theory"
@@ -2301,7 +2303,7 @@ els.tableView.addEventListener("change", (event) => {
     const field = fileInput.dataset.field;
     const row = fileInput.dataset.row;
     fileInput.value = "";
-    if (!files.length || !isTeacherUi()) return;
+    if (!files.length || !isTeacherUi() || uploadBusy) return;
     const student = currentStudent();
     if (!student) return;
     const uploadOne = (file) => {
@@ -2318,14 +2320,37 @@ els.tableView.addEventListener("change", (event) => {
         }
       );
     };
+    const importPracticePdf = async (last) => {
+      if (field !== "practice" || !last || !last.student) return last;
+      if (!last.needsImport && last.total) return last;
+      setSaveStatus("Разбираю задания из PDF…");
+      try {
+        const imported = await api("/api/import-pdf", {
+          method: "POST",
+          body: JSON.stringify({
+            studentId: student.id,
+            row: Number(row),
+            fromField: "practice",
+          }),
+        });
+        if (imported && imported.student) replaceStudent(imported.student);
+        return { ...last, ...imported };
+      } catch (error) {
+        return { ...last, importError: last.importError || error.message };
+      }
+    };
+    uploadBusy = true;
+    document.body.classList.add("is-busy");
     setSaveStatus(files.length > 1 ? "Загружаю файлы…" : "Загружаю файл…");
-    persistCurrent()
+    persistCurrent({ quiet: true })
       .then(async () => {
         let last = null;
         for (const file of files) {
           last = await uploadOne(file);
           if (last && last.student) replaceStudent(last.student);
         }
+        renderTable();
+        last = await importPracticePdf(last);
         await loadBanks();
         renderTable();
         if (last && last.importError) {
@@ -2342,6 +2367,10 @@ els.tableView.addEventListener("change", (event) => {
         setSaveStatus(friendly.message);
         alert(friendly.message);
         renderTable();
+      })
+      .finally(() => {
+        uploadBusy = false;
+        document.body.classList.remove("is-busy");
       });
     return;
   }
@@ -2650,8 +2679,10 @@ document.addEventListener(
       if (picker) openBankPicker(picker, pickerToggle);
       return;
     }
+    if (target.closest("input[type='file'], .file-pick, .practice-upload, .file-corner")) return;
     if (target.closest(".bank-picker-menu")) return;
-    if (target.closest(".bank-picker-layer") || Date.now() >= bankMenuIgnoreUntil) {
+    if (Date.now() < bankMenuIgnoreUntil) return;
+    if (document.querySelector(".bank-picker-layer") || target.closest(".bank-picker-layer")) {
       closeBankPickers();
     }
   },

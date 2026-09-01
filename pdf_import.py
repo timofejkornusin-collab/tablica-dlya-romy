@@ -18,6 +18,7 @@ EGE_PROMPT = (
 )
 
 MAX_PDF_BYTES = 20 * 1024 * 1024
+MAX_PDF_PAGES = 60
 TASK_VERBS = (
     "Отредактируйте",
     "тредактируйте",
@@ -147,7 +148,9 @@ def _extract_pymupdf(data: bytes) -> str:
         return ""
     parts = []
     try:
-        for page in doc:
+        for index, page in enumerate(doc):
+            if index >= MAX_PDF_PAGES:
+                break
             parts.append(page.get_text("text") or "")
     finally:
         doc.close()
@@ -164,7 +167,9 @@ def _extract_pypdf(data: bytes) -> str:
     except Exception:
         return ""
     parts = []
-    for page in reader.pages:
+    for index, page in enumerate(reader.pages):
+        if index >= MAX_PDF_PAGES:
+            break
         try:
             parts.append(page.extract_text() or "")
         except Exception:
