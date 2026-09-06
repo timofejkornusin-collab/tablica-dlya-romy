@@ -1533,6 +1533,10 @@ textarea:focus {
   white-space: pre-wrap;
 }
 
+.task-prompt-flow {
+  white-space: normal;
+}
+
 .task-skip {
   display: block !important;
   height: 64px !important;

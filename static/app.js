@@ -1924,8 +1924,14 @@ function renderTaskPrompt(text) {
   const parts = raw.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
   const blocks = [];
   const items = parts.length ? parts : [raw];
+  const numbered = /^\(\d+\)\s*(?:[А-ЯЁA-Z«"“„0-9]|[-—–])/;
+  const squash = (value) => value.trim().split(/\s+/).join(" ");
   items.forEach((part, index) => {
-    blocks.push(`<p class="task-prompt">${escapeHtml(part).replaceAll("\n", "<br>")}</p>`);
+    const flow = numbered.test(part);
+    const body = flow ? squash(part) : part;
+    const html = flow ? escapeHtml(body) : escapeHtml(body).replaceAll("\n", "<br>");
+    const cls = flow ? "task-prompt task-prompt-flow" : "task-prompt";
+    blocks.push(`<p class="${cls}">${html}</p>`);
     if (index === items.length - 1) return;
     const next = items[index + 1] || "";
     const tight = /^\(\d+\)/.test(next);

@@ -495,6 +495,20 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertIn("(3)Мгновенно", live_parts[1])
         self.assertNotIn("\n", live_parts[1])
 
+        live_lines = (
+            "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. "
+            "Запишите номера этих предложений.\n\n"
+            "(1)Я сидел в кают-компании, прислушиваясь в недоумении к свисту ветра между снастей и к ударам волн в бока судна.\n"
+            "(2)Вдруг раздался пронзительный свист боцманских свистков.\n"
+            "(3)Мгновенно всё народонаселение фрегата бросилось снизу вверх."
+        )
+        lined = self._parts(pdf_import.format_stored_prompt(live_lines))
+        self.assertEqual(len(lined), 2, lined)
+        self.assertTrue(lined[1].startswith("(1)Я сидел"))
+        self.assertIn("(2)Вдруг", lined[1])
+        self.assertIn("(3)Мгновенно", lined[1])
+        self.assertNotIn("\n", lined[1])
+
         live_task2 = (
             "Найдите предложения, в которых тире ставится в соответствии с одним и тем же правилом пунктуации. "
             "Запишите номера этих предложений.\n\n"
@@ -526,7 +540,10 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertIn("литературного языка", app_js)
         self.assertIn(r"\(\d+\)\s*", app_js)
         self.assertIn("task-skip-tight", app_js)
+        self.assertIn("task-prompt-flow", app_js)
+        self.assertNotIn("breakSentences", app_js)
         self.assertIn(".task-skip-tight", styles)
+        self.assertIn(".task-prompt-flow", styles)
         self.assertIn("body.practice-open #page-subtitle", styles)
         self.assertIn('setPageSubtitle("");', app_js)
 
@@ -553,6 +570,7 @@ class PromptParagraphSplitTest(unittest.TestCase):
             "Найдите предложения, в которых тире ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений. (1)17 февраля Россия празднует день рождения Агнии Барто.",
             "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений.\n\n(1)Я сидел в кают-компании, прислушиваясь в недоумении к свисту ветра между снастей и к ударам волн в бока судна.\n\n(2)Вдруг раздался пронзительный свист боцманских свистков.",
             "Найдите предложения, в которых тире ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений.\n\n(1)17 февраля Россия празднует день рождения Агнии Барто — самой любимой детской писательницы.\n\n(2)Агния Барто — автор многих известных стихотворений.\n\n(3)«Наша Таня громко плачет…», «Мы с Тамарой» — все эти стихотворения написаны ею. (4)Они из нашего детства — мы знаем многие строки наизусть.",
+            "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений.\n\n(1)Я сидел в кают-компании.\n(2)Вдруг раздался свист.\n(3)Мгновенно всё бросилось вверх.",
         ]
         script = (
             app[start:end]
@@ -570,6 +588,45 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertEqual(len(lines), len(samples))
         for raw, line in zip(samples, lines):
             self.assertEqual(json.loads(line), pdf_import.format_stored_prompt(raw))
+
+    def test_render_task21_passage_stays_one_wrapping_paragraph(self) -> None:
+        import json
+        import shutil
+        import subprocess
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("нет node")
+        app = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        start = app.index("function escapeHtml")
+        end = app.index("function linkifyText")
+        sample = (
+            "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. "
+            "Запишите номера этих предложений.\n\n"
+            "(1)Я сидел в кают-компании.\n"
+            "(2)Вдруг раздался свист.\n"
+            "(3)Мгновенно всё бросилось вверх."
+        )
+        script = (
+            app[start:end]
+            + "const html = renderTaskPrompt("
+            + json.dumps(sample, ensure_ascii=False)
+            + ");\nconsole.log(html);\n"
+        )
+        result = subprocess.run(
+            [node, "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        html = result.stdout
+        self.assertIn('class="task-prompt task-prompt-flow"', html)
+        self.assertIn("(1)Я сидел", html)
+        self.assertIn("(2)Вдруг", html)
+        self.assertIn("(3)Мгновенно", html)
+        self.assertNotIn("<br>", html)
+        self.assertNotIn("<br/>(2)", html)
+        self.assertEqual(html.count("<p "), 2)
 
 
 @unittest.skipUnless(all((FOLDER / name).is_file() for name in FILES.values()), "нет исходных PDF")

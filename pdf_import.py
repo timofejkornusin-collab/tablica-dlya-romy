@@ -360,7 +360,11 @@ def format_stored_prompt(prompt: str) -> str:
 def _merge_numbered_passage(text: str) -> str:
     """Keep (1)(2)(3) as one PDF-style paragraph after the instruction."""
     parts = [part.strip() for part in re.split(r"\n\s*\n", text or "") if part.strip()]
-    if len(parts) < 2:
+    if not parts:
+        return text
+    if len(parts) == 1:
+        if re.match(PAREN_SENTENCE_START, parts[0]):
+            return _squash(parts[0])
         return text
     merged: list[str] = []
     chunk: list[str] = []
