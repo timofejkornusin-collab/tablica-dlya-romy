@@ -1893,7 +1893,26 @@ function formatStoredPrompt(text) {
     "$1\n\n"
   );
   raw = raw.replace(/\n{3,}/g, "\n\n");
-  return raw;
+  const numbered = /^\(\d+\)\s*(?:[А-ЯЁA-Z«"“„0-9]|[-—–])/;
+  const parts = raw.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  const merged = [];
+  let chunk = [];
+  const squash = (value) => value.trim().split(/\s+/).join(" ");
+  const flush = () => {
+    if (chunk.length) {
+      merged.push(squash(chunk.join(" ")));
+      chunk = [];
+    }
+  };
+  for (const part of parts) {
+    if (numbered.test(part)) chunk.push(part);
+    else {
+      flush();
+      merged.push(part);
+    }
+  }
+  flush();
+  return merged.join("\n\n");
 }
 
 function formatTaskPrompt(text) {
@@ -1903,11 +1922,20 @@ function formatTaskPrompt(text) {
 function renderTaskPrompt(text) {
   const raw = formatTaskPrompt(text).trim();
   const parts = raw.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
-  const skip = `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`;
-  const blocks = (parts.length ? parts : [raw]).map(
-    (part) => `<p class="task-prompt">${escapeHtml(part).replaceAll("\n", "<br>")}</p>`
-  );
-  return blocks.join(skip);
+  const blocks = [];
+  const items = parts.length ? parts : [raw];
+  items.forEach((part, index) => {
+    blocks.push(`<p class="task-prompt">${escapeHtml(part).replaceAll("\n", "<br>")}</p>`);
+    if (index === items.length - 1) return;
+    const next = items[index + 1] || "";
+    const tight = /^\(\d+\)/.test(next);
+    blocks.push(
+      tight
+        ? `<div class="task-skip task-skip-tight" style="height:16px;min-height:16px;line-height:16px;font-size:16px;margin:0;padding:0;">&nbsp;</div>`
+        : `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`
+    );
+  });
+  return blocks.join("");
 }
 
 function linkifyText(text) {

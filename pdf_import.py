@@ -353,7 +353,31 @@ def format_stored_prompt(prompt: str) -> str:
         r"\1\n\n",
         text,
     )
-    return re.sub(r"\n{3,}", "\n\n", text).strip()
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return _merge_numbered_passage(text)
+
+
+def _merge_numbered_passage(text: str) -> str:
+    """Keep (1)(2)(3) as one PDF-style paragraph after the instruction."""
+    parts = [part.strip() for part in re.split(r"\n\s*\n", text or "") if part.strip()]
+    if len(parts) < 2:
+        return text
+    merged: list[str] = []
+    chunk: list[str] = []
+
+    def flush() -> None:
+        if chunk:
+            merged.append(_squash(" ".join(chunk)))
+            chunk.clear()
+
+    for part in parts:
+        if re.match(PAREN_SENTENCE_START, part):
+            chunk.append(part)
+        else:
+            flush()
+            merged.append(part)
+    flush()
+    return "\n\n".join(merged)
 
 
 def _split_instruction(text: str) -> tuple[str, str]:

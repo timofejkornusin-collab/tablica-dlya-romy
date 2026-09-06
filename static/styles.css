@@ -1545,6 +1545,13 @@ textarea:focus {
   overflow: hidden !important;
 }
 
+.task-skip-tight {
+  height: 16px !important;
+  min-height: 16px !important;
+  line-height: 16px !important;
+  font-size: 16px !important;
+}
+
 .task-options {
   margin: 0 0 16px;
   padding-top: 8px;

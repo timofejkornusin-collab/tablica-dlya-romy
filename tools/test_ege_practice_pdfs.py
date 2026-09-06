@@ -481,6 +481,20 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertTrue(shown[0].endswith("предложений."))
         self.assertTrue(shown[1].startswith("(1) Я сидел"))
 
+        live_broken = (
+            "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. "
+            "Запишите номера этих предложений.\n\n"
+            "(1)Я сидел в кают-компании, прислушиваясь в недоумении к свисту ветра между снастей и к ударам волн в бока судна.\n\n"
+            "(2)Вдруг раздался пронзительный свист боцманских свистков, и вслед за тем разнёсся по всем палубам крик десяти голосов: «Пошёл все наверх!» (3)Мгновенно всё народонаселение фрегата бросилось снизу вверх."
+        )
+        live_parts = self._parts(pdf_import.format_stored_prompt(live_broken))
+        self.assertEqual(len(live_parts), 2, live_parts)
+        self.assertTrue(live_parts[0].endswith("предложений."))
+        self.assertTrue(live_parts[1].startswith("(1)Я сидел"))
+        self.assertIn("(2)Вдруг", live_parts[1])
+        self.assertIn("(3)Мгновенно", live_parts[1])
+        self.assertNotIn("\n\n", live_parts[1])
+
     def test_frontend_keeps_format_stored_prompt(self) -> None:
         app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
@@ -490,6 +504,8 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertIn("смысл высказывания", app_js)
         self.assertIn("литературного языка", app_js)
         self.assertIn(r"\(\d+\)\s*", app_js)
+        self.assertIn("task-skip-tight", app_js)
+        self.assertIn(".task-skip-tight", styles)
         self.assertIn("body.practice-open #page-subtitle", styles)
         self.assertIn('setPageSubtitle("");', app_js)
 
@@ -514,6 +530,7 @@ class PromptParagraphSplitTest(unittest.TestCase):
             "Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. Запишите подобранное слово, соблюдая нормы современного русского литературного языка. Предельный срок подачи документов истекает завтра.",
             "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений. (1) Я сидел в кают-компании. (2)Вдруг раздался крик: «Пошёл все наверх!»",
             "Найдите предложения, в которых тире ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений. (1)17 февраля Россия празднует день рождения Агнии Барто.",
+            "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений.\n\n(1)Я сидел в кают-компании, прислушиваясь в недоумении к свисту ветра между снастей и к ударам волн в бока судна.\n\n(2)Вдруг раздался пронзительный свист боцманских свистков.",
         ]
         script = (
             app[start:end]
