@@ -244,6 +244,8 @@ class SyntheticPdfImportTest(unittest.TestCase):
         instruction2, passage2 = tasks[1]["prompt"].split("\n\n", 1)
         self.assertTrue(instruction2.rstrip(".").endswith("предложений"))
         self.assertTrue(passage2.startswith("(1)Я сидел"))
+        self.assertIn("(2)Вдруг", passage2)
+        self.assertNotIn("\n\n", passage2)
         self.assertFalse(journal.is_word_task(tasks[0]))
         self.assertFalse(journal.is_word_task(tasks[1]))
 
@@ -437,6 +439,48 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertTrue(third[1].startswith("Учился Фредерик Шопен"))
         self.assertTrue(self._parts(payload["instruction"])[0].endswith("пишется НН."))
 
+    def test_task21_splits_instruction_from_numbered_passage(self) -> None:
+        glued = (
+            "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. "
+            "Запишите номера этих предложений. (1) Я сидел в кают-компании, прислушиваясь в недоумении к свисту ветра "
+            "между снастей и к ударам волн в бока судна. (2)Вдруг раздался пронзительный свист боцманских свистков, "
+            "и вслед за тем разнёсся по всем палубам крик десяти голосов: «Пошёл все наверх!»"
+        )
+        pdf_style = (
+            "Найдите предложения, в которых тире ставится в соответствии с одним и тем же правилом пунктуации. "
+            "Запишите номера этих предложений. (1)17 февраля Россия празднует день рождения Агнии Барто — самой любимой детской писательницы. "
+            "(2)Агния Барто — автор многих известных стихотворений."
+        )
+        inside_word = (
+            "Укажите цифру(-ы), на месте которой(-ых) пишется НН. "
+            "Все дома необыкнове(1)о приплюснуты, давно не штукатуре(2)ы."
+        )
+        first = self._parts(pdf_import.format_stored_prompt(glued))
+        self.assertEqual(len(first), 2, first)
+        self.assertTrue(first[0].endswith("предложений."))
+        self.assertTrue(first[1].startswith("(1) Я сидел"))
+        self.assertIn("(2)Вдруг", first[1])
+        self.assertNotIn("(1)", first[0])
+        second = self._parts(pdf_import.format_stored_prompt(pdf_style))
+        self.assertTrue(second[0].endswith("предложений."))
+        self.assertTrue(second[1].startswith("(1)17 февраля"))
+        nn = pdf_import.format_stored_prompt(inside_word)
+        self.assertIn("необыкнове(1)о", nn.split("\n\n", 1)[1])
+        self.assertNotIn("\n\n(1)", nn)
+        again = pdf_import.format_stored_prompt(pdf_import.format_stored_prompt(glued))
+        self.assertEqual(again, pdf_import.format_stored_prompt(glued))
+
+        bank = {
+            "id": "pdf-21",
+            "title": "Задание 21",
+            "instruction": glued,
+            "tasks": [{"n": 1, "prompt": glued}],
+        }
+        payload = journal.public_practice(bank, {"id": "s", "name": "рома", "progress": {}}, "teacher")
+        shown = self._parts(payload["tasks"][0]["prompt"])
+        self.assertTrue(shown[0].endswith("предложений."))
+        self.assertTrue(shown[1].startswith("(1) Я сидел"))
+
     def test_frontend_keeps_format_stored_prompt(self) -> None:
         app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         styles = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
@@ -445,6 +489,7 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertIn(r"одна\s+буква\s+Н", app_js)
         self.assertIn("смысл высказывания", app_js)
         self.assertIn("литературного языка", app_js)
+        self.assertIn(r"\(\d+\)\s*", app_js)
         self.assertIn("body.practice-open #page-subtitle", styles)
         self.assertIn('setPageSubtitle("");', app_js)
 
@@ -467,6 +512,8 @@ class PromptParagraphSplitTest(unittest.TestCase):
             "Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. Запишите подобранное слово, соблюдая нормы современного русского литературного языка и сохраняя смысл высказывания. Учился Фредерик Шопен старательно и серьёзно.",
             "Отредактируйте предложение: исправьте лексическую ошибку, исключив лишнее слово. Запишите это слово. Композитор Шопен выступал в концертах этой зимы.",
             "Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. Запишите подобранное слово, соблюдая нормы современного русского литературного языка. Предельный срок подачи документов истекает завтра.",
+            "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений. (1) Я сидел в кают-компании. (2)Вдруг раздался крик: «Пошёл все наверх!»",
+            "Найдите предложения, в которых тире ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений. (1)17 февраля Россия празднует день рождения Агнии Барто.",
         ]
         script = (
             app[start:end]

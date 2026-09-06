@@ -110,6 +110,11 @@ PROMPT_SENTENCE_TAIL = (
     r"пишется\s+" + WRITING_TARGET + r"|"
     r"запятая\(-ые\))"
 )
+PAREN_SENTENCE_START = r"\(\d+\)\s*(?=[А-ЯЁA-Z«\"“„0-9]|[-—–])"
+NUMBERED_PROMPT_TAIL = (
+    r"Запишите номера этих предложений|Запишите номера ответов|"
+    r"запишите слово правильно|Запишите это слово"
+)
 WORD_HINTS = (
     "запишите слово",
     "запишите это слово",
@@ -198,13 +203,13 @@ def _clean_extracted(text: str) -> str:
     text = re.sub(r"\s*—\s*\d+\s+of\s+\d+\s*—", "\n", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(
-        r"(Ответ\s*:?\s*[_\-–—.]{3,}\.?)\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«\"])",
+        rf"(Ответ\s*:?\s*[_\-–—.]{3,}\.?)\s*(?=[1-5][.)]|{PAREN_SENTENCE_START})",
         r"\1\n",
         text,
         flags=re.I,
     )
     text = re.sub(
-        r"((?:Запишите номера ответов|Запишите номера этих предложений|запишите слово правильно|Запишите это слово)\.)\s*(?=[1-5][.)]|\(\d+\)[А-ЯЁA-Z«\"])",
+        rf"((?:{NUMBERED_PROMPT_TAIL})\.)\s*(?=[1-5][.)]|{PAREN_SENTENCE_START})",
         r"\1\n\n",
         text,
         flags=re.I,
@@ -339,6 +344,11 @@ def format_stored_prompt(prompt: str) -> str:
         text,
     )
     text = re.sub(
+        rf"(?i)({NUMBERED_PROMPT_TAIL})\.?[ \t]*\n*[ \t]*(?=[1-5][.)]|{PAREN_SENTENCE_START})",
+        r"\1.\n\n",
+        text,
+    )
+    text = re.sub(
         rf"({PROMPT_SENTENCE_TAIL}\.)[ \t]*\n*[ \t]*(?={SENTENCE_START})",
         r"\1\n\n",
         text,
@@ -391,18 +401,12 @@ def _strip_prompt_tail(text: str, strip_number: bool) -> str:
 
 def _format_passage(text: str) -> str:
     text = text or ""
-    text = re.sub(
-        r"(\S)[ \t]*\n+[ \t]*(\(\d+\)(?=[А-ЯЁA-Z«\"]))",
-        r"\1\n\n\2",
-        text,
-        count=1,
-    )
-    text = re.sub(
-        r"(\S)[ \t]+(\(\d+\)(?=[А-ЯЁA-Z«\"]))",
-        r"\1\n\n\2",
-        text,
-        count=1,
-    )
+    match = re.search(PAREN_SENTENCE_START, text)
+    if match and match.start() > 0:
+        before = text[: match.start()].rstrip()
+        after = text[match.start() :]
+        if before:
+            text = f"{before}\n\n{after}"
     parts = [_squash(part) for part in re.split(r"\n\s*\n", text)]
     return "\n\n".join(part for part in parts if part).strip()
 
