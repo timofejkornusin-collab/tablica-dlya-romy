@@ -1898,11 +1898,9 @@ function formatStoredPrompt(text) {
   const merged = [];
   let chunk = [];
   const squash = (value) => value.trim().split(/\s+/).join(" ");
-  const breakSentences = (value) =>
-    value.replace(/([.!?…»])\s+(\(\d+\)\s*(?:[А-ЯЁA-Z«"“„0-9]|[-—–]))/g, "$1\n$2");
   const flush = () => {
     if (chunk.length) {
-      merged.push(breakSentences(squash(chunk.join(" "))));
+      merged.push(squash(chunk.join(" ")));
       chunk = [];
     }
   };

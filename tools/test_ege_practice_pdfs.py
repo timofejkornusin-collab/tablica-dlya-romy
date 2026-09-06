@@ -491,9 +491,9 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertEqual(len(live_parts), 2, live_parts)
         self.assertTrue(live_parts[0].endswith("предложений."))
         self.assertTrue(live_parts[1].startswith("(1)Я сидел"))
-        self.assertIn("\n(2)Вдруг", live_parts[1])
-        self.assertIn("\n(3)Мгновенно", live_parts[1])
-        self.assertNotIn("\n\n", live_parts[1])
+        self.assertIn("(2)Вдруг", live_parts[1])
+        self.assertIn("(3)Мгновенно", live_parts[1])
+        self.assertNotIn("\n", live_parts[1])
 
         live_task2 = (
             "Найдите предложения, в которых тире ставится в соответствии с одним и тем же правилом пунктуации. "
@@ -509,12 +509,12 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertEqual(len(two), 2, two)
         self.assertTrue(two[0].endswith("предложений."))
         self.assertTrue(two[1].startswith("(1)17 февраля"))
-        self.assertIn("\n(2)Агния Барто", two[1])
-        self.assertIn("\n(3)«Наша Таня", two[1])
-        self.assertIn("\n(4)Они из нашего", two[1])
-        self.assertIn("\n(5)Агния Барто", two[1])
-        self.assertIn("\n(6)Наряду", two[1])
-        self.assertNotIn("\n\n", two[1])
+        self.assertIn("(2)Агния Барто", two[1])
+        self.assertIn("(3)«Наша Таня", two[1])
+        self.assertIn("(4)Они из нашего", two[1])
+        self.assertIn("(5)Агния Барто", two[1])
+        self.assertIn("(6)Наряду", two[1])
+        self.assertNotIn("\n", two[1])
 
     def test_frontend_keeps_format_stored_prompt(self) -> None:
         app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
