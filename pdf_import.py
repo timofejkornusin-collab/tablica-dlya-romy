@@ -367,7 +367,7 @@ def _merge_numbered_passage(text: str) -> str:
 
     def flush() -> None:
         if chunk:
-            merged.append(_squash(" ".join(chunk)))
+            merged.append(_break_numbered_sentences(_squash(" ".join(chunk))))
             chunk.clear()
 
     for part in parts:
@@ -378,6 +378,15 @@ def _merge_numbered_passage(text: str) -> str:
             merged.append(part)
     flush()
     return "\n\n".join(merged)
+
+
+def _break_numbered_sentences(text: str) -> str:
+    """Put each (1)(2)(3) on its own line, like the PDF worksheet."""
+    return re.sub(
+        rf"([.!?…»])\s+({PAREN_SENTENCE_START})",
+        r"\1\n\2",
+        text or "",
+    )
 
 
 def _split_instruction(text: str) -> tuple[str, str]:
