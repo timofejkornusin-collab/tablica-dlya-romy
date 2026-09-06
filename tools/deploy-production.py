@@ -14,13 +14,12 @@ index.html wholesale: it only patches cache-buster query strings.
 
 from __future__ import annotations
 
-import importlib.util
+import json
 import os
 import py_compile
 import re
 import shutil
 import subprocess
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -51,10 +50,10 @@ REQUIRED = (
     "tools/production_students_safety.py",
 )
 
-SEED_PDFS = (
-    ("ege-1.pdf", "Задание 1.pdf", "pdf-ege1"),
-    ("ege-2.pdf", "Задание 2.pdf", "pdf-ege2"),
-    ("ege-3.pdf", "Задание 3.pdf", "pdf-ege3"),
+SEED_BANKS = (
+    ("pdf-ege1.json", "pdf-ege1", "Задание 1"),
+    ("pdf-ege2.json", "pdf-ege2", "Задание 2"),
+    ("pdf-ege3.json", "pdf-ege3", "Задание 3"),
 )
 
 APP_MARKERS = (
@@ -102,9 +101,9 @@ APP_MARKERS = (
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=ege123-1",
-    r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=ege123-1",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=ege123-1",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=ege123-2",
+    r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=ege123-2",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=ege123-2",
     r'find-date\.js(?:\?v=[^"]*)?': "find-date.js?v=class-bar1",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
@@ -460,48 +459,34 @@ def install_stage() -> None:
         fail("ОШИБКА: файлы не установлены. Восстановлена прежняя версия.")
 
 
-def _load_app_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        fail("ОШИБКА: не прочитан %s." % path.name)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 def install_seed_banks() -> None:
-    seed = STAGE / "seed-pdfs"
-    present = [item for item in SEED_PDFS if (seed / item[0]).is_file()]
+    seed = STAGE / "seed-banks"
+    present = [item for item in SEED_BANKS if (seed / item[0]).is_file()]
     if not present:
         return
-    if len(present) != len(SEED_PDFS):
-        fail("ОШИБКА: в выкладке не все PDF заданий 1–3. Сайт не изменён.")
-    saved = {name: sys.modules.get(name) for name in ("pdf_import", "journal")}
-    try:
-        pdf_mod = _load_app_module("pdf_import", APP_ROOT / "pdf_import.py")
-        journal_mod = _load_app_module("journal", APP_ROOT / "journal.py")
-        for src, title, bank_id in SEED_PDFS:
-            path = seed / src
-            bank = pdf_mod.import_pdf_bytes(path.read_bytes(), title, bank_id)
-            tasks = bank.get("tasks") or []
-            if len(tasks) < 90:
-                fail("ОШИБКА: PDF %s разобран плохо (%s заданий)." % (title, len(tasks)))
-            journal_mod.save_bank(bank)
-            print("Банк %s: %s заданий" % (bank.get("title") or title, len(tasks)))
-    finally:
-        for name, module in saved.items():
-            if module is None:
-                sys.modules.pop(name, None)
-            else:
-                sys.modules[name] = module
+    if len(present) != len(SEED_BANKS):
+        fail("ОШИБКА: в выкладке не все банки заданий 1–3.")
+    dest_dir = APP_ROOT / "data" / "banks"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for filename, bank_id, title in SEED_BANKS:
+        raw = json.loads((seed / filename).read_text(encoding="utf-8"))
+        tasks = raw.get("tasks") if isinstance(raw, dict) else None
+        if not isinstance(raw, dict) or not isinstance(tasks, list) or len(tasks) < 90:
+            fail("ОШИБКА: банк %s повреждён." % title)
+        raw["id"] = bank_id
+        raw["title"] = title
+        dest = dest_dir / ("%s.json" % bank_id)
+        tmp = dest.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(dest)
+        print("Банк %s: %s заданий" % (title, len(tasks)))
 
 
 def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "ege123-1" in installed_index else "0"
+    index_marker = "1" if "ege123-2" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -513,7 +498,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("ege123-1"))
+        index_marker = str(live_index.count("ege123-2"))
         api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)
@@ -549,9 +534,9 @@ def main() -> None:
     except SystemExit:
         restore_files()
         raise
-    except Exception:
+    except Exception as exc:
         restore_files()
-        fail("ОШИБКА: банки заданий 1–3 не установлены. Восстановлена прежняя версия.")
+        fail("ОШИБКА: банки заданий 1–3 не установлены (%s). Восстановлена прежняя версия." % exc)
     restart_on_8765()
     local_code, python_8766, site_code = verify_live()
     print("ГОТОВО. ВСЕ ИЗМЕНЕНИЯ УСТАНОВЛЕНЫ.")

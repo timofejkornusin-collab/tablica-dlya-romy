@@ -100,9 +100,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=ege123-1", text)
-        self.assertIn("mobile.css?v=ege123-1", text)
-        self.assertIn("app.js?v=ege123-1", text)
+        self.assertIn("styles.css?v=ege123-2", text)
+        self.assertIn("mobile.css?v=ege123-2", text)
+        self.assertIn("app.js?v=ege123-2", text)
         self.assertIn("find-date.js?v=class-bar1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
@@ -241,7 +241,7 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("journal-students-safety-begin", server_text)
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("ege123-1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("ege123-2", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertTrue((self.app / "static" / "find-date.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
@@ -250,16 +250,24 @@ class DeployProductionTest(unittest.TestCase):
         deploy = load_deploy()
         deploy.STAGE = self.stage
         deploy.APP_ROOT = self.app
-        seed = self.stage / "seed-pdfs"
+        seed = self.stage / "seed-banks"
         seed.mkdir()
-        for name in ("ege-1.pdf", "ege-2.pdf", "ege-3.pdf"):
-            shutil.copy2(ROOT / "seed-pdfs" / name, seed / name)
-        shutil.copy2(ROOT / "pdf_import.py", self.app / "pdf_import.py")
-        shutil.copy2(ROOT / "journal.py", self.app / "journal.py")
+        for name in ("pdf-ege1.json", "pdf-ege2.json", "pdf-ege3.json"):
+            shutil.copy2(ROOT / "seed-banks" / name, seed / name)
         deploy.install_seed_banks()
         for bank_id, title in (("pdf-ege1", "Задание 1"), ("pdf-ege2", "Задание 2"), ("pdf-ege3", "Задание 3")):
             path = self.app / "data" / "banks" / f"{bank_id}.json"
             self.assertTrue(path.is_file(), bank_id)
+            bank = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(bank["id"], bank_id)
+            self.assertEqual(bank["title"], title)
+            self.assertGreaterEqual(len(bank["tasks"]), 90)
+
+    def test_repo_seed_banks_are_ready_to_copy(self) -> None:
+        deploy = load_deploy()
+        for filename, bank_id, title in deploy.SEED_BANKS:
+            path = ROOT / "seed-banks" / filename
+            self.assertTrue(path.is_file(), filename)
             bank = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(bank["id"], bank_id)
             self.assertEqual(bank["title"], title)
