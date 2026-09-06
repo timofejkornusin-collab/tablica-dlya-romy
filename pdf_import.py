@@ -50,6 +50,9 @@ TASK_VERBS = (
     "амените",
     "В одном",
     "одном",
+    "В тексте выделено",
+    "Самостоятельно",
+    "амостоятельно",
     "Укажи",
     "кажи",
     "Выбери",
@@ -92,6 +95,7 @@ INSTRUCTION_END = re.compile(
     r"запишите слово правильно|"
     r"Запишите это слово(?!\s*,)|"
     r"Выпишите это слово(?!\s*,)|"
+    r"Запишите эт(?:о(?:\(\-у\))?|от|у)[^.?!]{0,80}|"
     r"смысл высказывания|"
     r"нормы современного русского литературного языка(?!\s+и\s+сохраняя)|"
     r"на месте которой.{0,48}пишется(?:\s+одна\s+буква\s+Н|\s+НН|\s+Н)|"
@@ -106,6 +110,7 @@ SENTENCE_START = (
 PROMPT_SENTENCE_TAIL = (
     r"(?:смысл высказывания|литературного языка|"
     r"Запишите это слово|Выпишите это слово|запишите слово правильно|"
+    r"Запишите эт(?:о(?:\(\-у\))?|от|у)[^.?!]{0,80}|"
     r"подобранное слово|"
     r"пишется\s+" + WRITING_TARGET + r"|"
     r"запятая\(-ые\))"
@@ -113,11 +118,14 @@ PROMPT_SENTENCE_TAIL = (
 PAREN_SENTENCE_START = r"\(\d+\)\s*(?=[А-ЯЁA-Z«\"“„0-9]|[-—–])"
 NUMBERED_PROMPT_TAIL = (
     r"Запишите номера этих предложений|Запишите номера ответов|"
-    r"запишите слово правильно|Запишите это слово"
+    r"запишите слово правильно|Запишите это слово|"
+    r"Запишите эт(?:о(?:\(\-у\))?|от|у)[^.?!]{0,80}"
 )
 WORD_HINTS = (
     "запишите слово",
-    "запишите это слово",
+    "запишите это",
+    "запишите эту",
+    "запишите этот",
     "слово правильно",
     "выпишите",
     "грамматическая ошибка",
@@ -125,11 +133,13 @@ WORD_HINTS = (
     "лексическ",
     "отредактируйте",
     "постановке ударения",
+    "самостоятельно подберите",
 )
 NUMBER_HINTS = (
     "запишите номера",
     "номера ответов",
     "номера этих",
+    "варианты ответов",
     "цифру",
     "цифры",
     "цифр",
@@ -278,39 +288,112 @@ def _squash(text: str) -> str:
 
 def _make_task(number: int, body: str) -> dict | None:
     answer = _take_inline_answer(body)
-    options = _options_1_to_5(body)
+    options, extra_passage = _options_and_passage(body)
     kind = ""
-    if not options:
+    if not options and "самостоятельно подберите" not in (body or "").lower():
         phrases = _phrase_options(body)
         if phrases:
             options = phrases
             kind = "phrases"
     prompt = _task_prompt(body, options)
-    if not prompt and not any(options):
+    if not prompt and not any(options) and not extra_passage:
         return None
     if not kind and _looks_word_prompt(prompt) and not any(options):
         kind = "word"
     task = {"n": number, "prompt": prompt, "options": options, "answer": answer}
     if kind:
         task["kind"] = kind
+    if extra_passage and options:
+        task["passage"] = _format_passage(BLANK_ANSWER.sub(" ", extra_passage))[:8000]
     return task
 
 
 def _options_1_to_5(body: str) -> list[str]:
+    options, _passage = _options_and_passage(body)
+    return options
+
+
+def _raw_options_1_to_5(body: str) -> tuple[dict[int, str], str]:
     by_num: dict[int, str] = {}
-    for num, raw in OPTION_BLOCK.findall(body):
-        line = _squash(BLANK_ANSWER.sub("", raw))
-        if line:
-            by_num[int(num)] = line[:500]
+    fifth_end = -1
+    for match in OPTION_BLOCK.finditer(body or ""):
+        number = int(match.group(1))
+        line = BLANK_ANSWER.sub("", match.group(2))
+        if not _squash(line) or number in by_num:
+            continue
+        by_num[number] = line
+        if number == 5:
+            fifth_end = match.end()
+        if 1 in by_num and 2 in by_num and 3 in by_num and 4 in by_num and 5 in by_num:
+            break
+    rest = (body or "")[fifth_end:].strip() if fifth_end != -1 else ""
     if len(by_num) < 3:
         by_num = {}
-        for num, raw in INLINE_OPTION.findall(body):
-            line = _squash(BLANK_ANSWER.sub("", raw))
-            if line and int(num) not in by_num:
-                by_num[int(num)] = line[:500]
+        fifth_end = -1
+        for match in INLINE_OPTION.finditer(body or ""):
+            number = int(match.group(1))
+            line = BLANK_ANSWER.sub("", match.group(2))
+            if not _squash(line) or number in by_num:
+                continue
+            by_num[number] = line
+            if number == 5:
+                fifth_end = match.end()
+            if 1 in by_num and 2 in by_num and 3 in by_num and 4 in by_num and 5 in by_num:
+                break
+        rest = (body or "")[fifth_end:].strip() if fifth_end != -1 else ""
+    return by_num, rest
+
+
+def _split_fifth_passage(fifth: str, typical: int = 140) -> tuple[str, str]:
+    text = (fifth or "").strip()
+    if not text:
+        return "", ""
+    article = re.search(r"(?<=\s)(Статья\s+\d+\.)", text)
+    if article and article.start() >= 40:
+        after = text[article.start() :].strip()
+        if len(_squash(after)) >= 80:
+            return _squash(text[: article.start()]), after
+    compact = _squash(text)
+    cap = max(min(typical, 280) + 80, 180)
+    parts = [part.strip() for part in re.split(r"(?<=[.!?…])\s+", compact) if part.strip()]
+    if len(parts) < 2:
+        return compact, ""
+    kept: list[str] = []
+    for index, sent in enumerate(parts):
+        leftover = _squash(" ".join(parts[index:]))
+        tentative = _squash(" ".join(kept + [sent]))
+        passage_like = (
+            sent.startswith("Статья")
+            or sent.startswith("Требования")
+            or (len(sent) >= 90 and not re.match(r"^[А-ЯЁA-Z]{2,}(?:\s+[А-ЯЁA-Z]+)*\s*\.", sent))
+        )
+        if kept and len(leftover) >= 80 and (passage_like or len(tentative) > cap):
+            return _squash(" ".join(kept)), leftover
+        kept.append(sent)
+    return compact, ""
+
+
+def _options_and_passage(body: str) -> tuple[list[str], str]:
+    if re.search(r"самостоятельно\s+подберите", body or "", re.I):
+        return [], ""
+    by_num, rest = _raw_options_1_to_5(body)
     if len(by_num) < 3:
-        return []
-    return [by_num.get(idx, "") for idx in range(1, 6)]
+        return [], ""
+    typical = max((len(_squash(by_num[idx])) for idx in range(1, 5) if by_num.get(idx)), default=140)
+    typical = min(max(typical, 80), 280)
+    if rest and TASK_START.search(rest[:120]):
+        rest = ""
+    fifth = by_num.get(5, "")
+    option5, from_fifth = _split_fifth_passage(fifth, typical)
+    if option5:
+        by_num[5] = option5
+    passage = rest or from_fifth
+    if rest and from_fifth and len(_squash(from_fifth)) > len(_squash(rest)):
+        passage = from_fifth
+    options = [_squash(by_num.get(idx, ""))[:500] for idx in range(1, 6)]
+    if sum(1 for item in options if item) < 3:
+        return [], ""
+    return options, passage
 
 
 def _phrase_options(body: str) -> list[str]:

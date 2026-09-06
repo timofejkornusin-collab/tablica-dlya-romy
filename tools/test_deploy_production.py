@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -46,7 +47,7 @@ class DeployProductionTest(unittest.TestCase):
             "function restorePracticeScroll() {}\nconst keepScroll = true;\n"
             "function applyCopiedTable() {}\nfunction applyCopiedRow() {}\nfunction bumpSaveEpoch() {}\n"
             "function syncStartDateWeekday() {}\nconst keepRicher = true;\n"
-            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\nconst attachLabel = 'attach-file-label';\nfunction updateLogoutButton() {}\nfunction ensureTableActionLayout() {}\nfunction updateBrandPill() {}\nfunction ensureGradeField() {}\nconst pick = 'file-pick';\nconst needsImport = 'needsImport';\nconst serverDown = 'Сервер не ответил';\nfunction formatStoredPrompt() {}\nconst flow = 'task-prompt-flow';\n",
+            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\nconst attachLabel = 'attach-file-label';\nfunction updateLogoutButton() {}\nfunction ensureTableActionLayout() {}\nfunction updateBrandPill() {}\nfunction ensureGradeField() {}\nconst pick = 'file-pick';\nconst needsImport = 'needsImport';\nconst serverDown = 'Сервер не ответил';\nfunction formatStoredPrompt() {}\nconst flow = 'task-prompt-flow';\nconst passage = 'task.passage';\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "practice-page.js").write_text(
@@ -99,9 +100,9 @@ class DeployProductionTest(unittest.TestCase):
         path = self.app / "static" / "index.html"
         deploy.patch_index(path)
         text = path.read_text(encoding="utf-8")
-        self.assertIn("styles.css?v=task21-split5", text)
-        self.assertIn("mobile.css?v=task21-split5", text)
-        self.assertIn("app.js?v=task21-split5", text)
+        self.assertIn("styles.css?v=ege123-1", text)
+        self.assertIn("mobile.css?v=ege123-1", text)
+        self.assertIn("app.js?v=ege123-1", text)
         self.assertIn("find-date.js?v=class-bar1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
@@ -240,10 +241,29 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("journal-students-safety-begin", server_text)
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
-        self.assertIn("task21-split5", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("ege123-1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertTrue((self.app / "static" / "find-date.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')
+
+    def test_install_seed_banks_writes_three_banks(self) -> None:
+        deploy = load_deploy()
+        deploy.STAGE = self.stage
+        deploy.APP_ROOT = self.app
+        seed = self.stage / "seed-pdfs"
+        seed.mkdir()
+        for name in ("ege-1.pdf", "ege-2.pdf", "ege-3.pdf"):
+            shutil.copy2(ROOT / "seed-pdfs" / name, seed / name)
+        shutil.copy2(ROOT / "pdf_import.py", self.app / "pdf_import.py")
+        shutil.copy2(ROOT / "journal.py", self.app / "journal.py")
+        deploy.install_seed_banks()
+        for bank_id, title in (("pdf-ege1", "Задание 1"), ("pdf-ege2", "Задание 2"), ("pdf-ege3", "Задание 3")):
+            path = self.app / "data" / "banks" / f"{bank_id}.json"
+            self.assertTrue(path.is_file(), bank_id)
+            bank = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(bank["id"], bank_id)
+            self.assertEqual(bank["title"], title)
+            self.assertGreaterEqual(len(bank["tasks"]), 90)
 
     def test_python_script_runs_with_windows_crlf(self) -> None:
         crlf_copy = self.root / "deploy-production.py"

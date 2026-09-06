@@ -676,13 +676,15 @@ def is_word_task(task: dict | None) -> bool:
     if len(options) >= 3:
         return False
     prompt = str(task.get("prompt") or "").lower()
-    if any(hint in prompt for hint in ("запишите номера", "номера ответов", "номера этих", "цифру", "цифры", "цифр")):
+    if any(hint in prompt for hint in ("запишите номера", "номера ответов", "номера этих", "варианты ответов", "цифру", "цифры", "цифр")):
         return False
     return any(
         hint in prompt
         for hint in (
             "запишите слово",
-            "запишите это слово",
+            "запишите это",
+            "запишите эту",
+            "запишите этот",
             "слово правильно",
             "выпишите",
             "грамматическая ошибка",
@@ -690,6 +692,7 @@ def is_word_task(task: dict | None) -> bool:
             "лексическ",
             "отредактируйте",
             "постановке ударения",
+            "самостоятельно подберите",
         )
     )
 
@@ -871,6 +874,8 @@ def public_practice(bank: dict, student: dict, role: str) -> dict:
             "given": given,
             "status": "empty",
         }
+        if str(task.get("passage") or "").strip():
+            item["passage"] = format_stored_prompt(task.get("passage") or "")
         if role == "teacher":
             item["answer"] = str(task.get("answer") or "")
         if given and key:

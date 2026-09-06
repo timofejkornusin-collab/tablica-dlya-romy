@@ -1807,10 +1807,15 @@ function renderPractice() {
       const isWord = Boolean(task.word) || task.kind === "word" || isPhrases;
       const listTag = isPhrases ? "ul" : "ol";
       const skip = `<div class="task-skip" style="height:64px;min-height:64px;line-height:64px;font-size:32px;margin:0;padding:0;">&nbsp;</div>`;
+      const tightSkip = `<div class="task-skip task-skip-tight" style="height:16px;min-height:16px;line-height:16px;font-size:16px;margin:0;padding:0;">&nbsp;</div>`;
+      const passageText = String(task.passage || "").trim();
       const options = optionItems.length
-        ? `${skip}<${listTag} class="task-options${isPhrases ? " task-phrases" : ""}">${optionItems
+        ? `${passageText ? tightSkip : skip}<${listTag} class="task-options${isPhrases ? " task-phrases" : ""}">${optionItems
             .map((option) => `<li>${escapeHtml(option)}</li>`)
             .join("")}</${listTag}>`
+        : "";
+      const passage = passageText
+        ? `${tightSkip}<p class="task-prompt task-prompt-flow">${escapeHtml(passageText.split(/\s+/).join(" "))}</p>`
         : "";
       const answerPlaceholder = isWord ? "слово" : "245 или 2, 4, 5";
       const keyPlaceholder = isWord ? "например слово" : "например 245";
@@ -1836,6 +1841,7 @@ function renderPractice() {
           </div>
           ${renderTaskPrompt(task.prompt || data.instruction || "")}
           ${options}
+          ${passage}
           <div class="task-actions">
             <label class="task-field-label">Ответ ученика
               <input data-n="${task.n}" data-role="given" value="${escapeHtml(task.given || "")}" placeholder="${answerPlaceholder}" ${locked ? "readonly" : ""} />
@@ -1881,7 +1887,7 @@ function escapeHtml(value) {
 function formatStoredPrompt(text) {
   let raw = String(text || "").replace(/\r/g, "");
   raw = raw.replace(
-    /(Запишите номера этих предложений|Запишите номера ответов|запишите слово правильно|Запишите это слово)\.?[ \t]*\n*[ \t]*(?=[1-5][.)]|\(\d+\)\s*(?:[А-ЯЁA-Z«"“„0-9]|[-—–]))/gi,
+    /(Запишите номера этих предложений|Запишите номера ответов|запишите слово правильно|Запишите это слово|Запишите эт(?:о(?:\(-у\))?|от|у)[^.!?]{0,80})\.?[ \t]*\n*[ \t]*(?=[1-5][.)]|\(\d+\)\s*(?:[А-ЯЁA-Z«"“„0-9]|[-—–]))/gi,
     "$1.\n\n"
   );
   raw = raw.replace(
@@ -1889,7 +1895,7 @@ function formatStoredPrompt(text) {
     "$1 $2."
   );
   raw = raw.replace(
-    /(смысл высказывания\.|литературного языка\.|Запишите это слово\.|Выпишите это слово\.|запишите слово правильно\.|подобранное слово\.|пишется\s+(?:одна\s+буква\s+Н|НН|Н)\.|запятая\(-ые\)\.)[ \t]*\n*[ \t]*(?!(?:Укажите|Запишите|Найдите|Выберите|Отредактируйте|Исправьте))(?=[«"“„]|[-—–]|[А-ЯЁ])/g,
+    /(смысл высказывания\.|литературного языка\.|Запишите это слово\.|Выпишите это слово\.|запишите слово правильно\.|Запишите эт(?:о(?:\(-у\))?|от|у)[^.!?]{0,80}\.|подобранное слово\.|пишется\s+(?:одна\s+буква\s+Н|НН|Н)\.|запятая\(-ые\)\.)[ \t]*\n*[ \t]*(?!(?:Укажите|Запишите|Найдите|Выберите|Отредактируйте|Исправьте))(?=[«"“„]|[-—–]|[А-ЯЁ])/g,
     "$1\n\n"
   );
   raw = raw.replace(/\n{3,}/g, "\n\n");
@@ -1934,7 +1940,7 @@ function renderTaskPrompt(text) {
     blocks.push(`<p class="${cls}">${html}</p>`);
     if (index === items.length - 1) return;
     const next = items[index + 1] || "";
-    const tight = /^\(\d+\)/.test(next);
+    const tight = /^\(\d+\)/.test(next) || next.length > 220;
     blocks.push(
       tight
         ? `<div class="task-skip task-skip-tight" style="height:16px;min-height:16px;line-height:16px;font-size:16px;margin:0;padding:0;">&nbsp;</div>`

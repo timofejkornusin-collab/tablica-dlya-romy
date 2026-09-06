@@ -541,6 +541,7 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertIn(r"\(\d+\)\s*", app_js)
         self.assertIn("task-skip-tight", app_js)
         self.assertIn("task-prompt-flow", app_js)
+        self.assertIn("task.passage", app_js)
         self.assertNotIn("breakSentences", app_js)
         self.assertIn(".task-skip-tight", styles)
         self.assertIn(".task-prompt-flow", styles)
@@ -571,6 +572,7 @@ class PromptParagraphSplitTest(unittest.TestCase):
             "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений.\n\n(1)Я сидел в кают-компании, прислушиваясь в недоумении к свисту ветра между снастей и к ударам волн в бока судна.\n\n(2)Вдруг раздался пронзительный свист боцманских свистков.",
             "Найдите предложения, в которых тире ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений.\n\n(1)17 февраля Россия празднует день рождения Агнии Барто — самой любимой детской писательницы.\n\n(2)Агния Барто — автор многих известных стихотворений.\n\n(3)«Наша Таня громко плачет…», «Мы с Тамарой» — все эти стихотворения написаны ею. (4)Они из нашего детства — мы знаем многие строки наизусть.",
             "Найдите предложения, в которых двоеточие ставится в соответствии с одним и тем же правилом пунктуации. Запишите номера этих предложений.\n\n(1)Я сидел в кают-компании.\n(2)Вдруг раздался свист.\n(3)Мгновенно всё бросилось вверх.",
+            "Самостоятельно подберите указательное местоимение, которое должно стоять на месте пропуска в предпоследнем предложении текста. Запишите это местоимение. Не стану описывать оренбургскую осаду.",
         ]
         script = (
             app[start:end]
@@ -667,6 +669,126 @@ class RealPdfImportTest(unittest.TestCase):
                 elif ege in passage:
                     self.assertLess(len(filled), 3)
                     self.assertRegex(first["prompt"], r"\(\d\)")
+
+
+SEED_DIR = ROOT / "seed-pdfs"
+SEED_FILES = {1: "ege-1.pdf", 2: "ege-2.pdf", 3: "ege-3.pdf"}
+
+
+class Task123StructureTest(unittest.TestCase):
+    def test_task1_splits_instruction_from_text(self) -> None:
+        text = (
+            "1.Самостоятельно подберите указательное местоимение, которое должно стоять на месте пропуска в "
+            "предпоследнем предложении текста. Запишите это местоимение. Ответ__________. "
+            "Не стану описывать оренбургскую осаду, которая принадлежит истории, а не семейственным запискам. "
+            "(По А. С. Пушкину)\n"
+            "2.Самостоятельно подберите ограничительно-выделительную частицу, которая должна стоять на месте "
+            "пропуска в первом абзаце текста. Запишите эту частицу. Ответ__________. "
+            "Для Пушкина характерна не встречаемая, кроме него, нигде и ни у кого черта художественного гения. "
+            "(Из Пушкинской речи Ф. М. Достоевского)\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        self.assertEqual([task["n"] for task in tasks], [1, 2])
+        self.assertTrue(journal.is_word_task(tasks[0]))
+        self.assertFalse(tasks[0].get("options"))
+        parts = [part.strip() for part in tasks[0]["prompt"].split("\n\n") if part.strip()]
+        self.assertEqual(len(parts), 2, parts)
+        self.assertTrue(parts[0].endswith("местоимение."))
+        self.assertTrue(parts[1].startswith("Не стану описывать"))
+        self.assertNotIn("Ответ", tasks[0]["prompt"])
+
+    def test_task2_keeps_definitions_then_passage(self) -> None:
+        text = (
+            "1.В тексте выделено пять слов. Укажите варианты ответов, в которых лексическое значение "
+            "выделенного слова соответствует его значению в данном тексте. Ответ____________.\n"
+            "1. ОПИСЫВАТЬ. что. Составлять полный перечень вещей, бумаг и т. п. с целью учёта. Описывать инвентарь, имущество.\n"
+            "2. ИСТОРИЯ. разговорное. Происшествие, событие, случай. Рассказать о какой-либо истории.\n"
+            "3. ЗАПИСКИ. только множественное. Чьи-либо наблюдения, замечания, воспоминания и т. п. Путевые записки.\n"
+            "4. ПИЩА. То, что служит источником чего-либо, даёт материал духовной деятельности. Духовная пища.\n"
+            "5. ОБРАЗ. чего. Характер, склад, направление чего-либо. Образ жизни. Наш образ мыслей сходен.\n"
+            "Не стану описывать оренбургскую осаду, которая принадлежит истории, а не семейственным запискам. "
+            "(По А. С. Пушкину)\n"
+            "2.В тексте выделено пять слов. Укажите варианты ответов, в которых лексическое значение "
+            "выделенного слова соответствует его значению в данном тексте. Ответ____________.\n"
+            "1. ЧУЖОЙ. Являющийся собственностью другого. Оставить на хранение чужие вещи.\n"
+            "2. ЗНАЧЕНИЕ. Важность, значительность. Историческое значение.\n"
+            "3. ЗАКЛЮЧАТЬ. Заканчивать, завершать. Заключать речь призывом.\n"
+            "4. ПРОЯВИТЬ. Обнаружить своё свойство. Проявить храбрость.\n"
+            "5. ЧЕРТА. Типичная особенность. Характерная черта личности.\n"
+            "Для Пушкина характерна черта художественного гения. (Из Пушкинской речи Ф. М. Достоевского)\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        self.assertEqual([task["n"] for task in tasks], [1, 2])
+        self.assertFalse(journal.is_word_task(tasks[0]))
+        self.assertEqual(len([item for item in tasks[0]["options"] if item]), 5)
+        self.assertTrue(tasks[0]["options"][0].startswith("ОПИСЫВАТЬ."))
+        self.assertIn("Не стану описывать", tasks[0].get("passage") or "")
+        self.assertNotIn("Не стану описывать", tasks[0]["options"][4])
+        payload = journal.public_practice(
+            {"id": "pdf-ege2", "title": "Задание 2", "instruction": tasks[0]["prompt"], "tasks": tasks},
+            {"id": "s", "name": "рома", "progress": {}},
+            "teacher",
+        )
+        self.assertIn("Не стану описывать", payload["tasks"][0].get("passage") or "")
+
+    def test_task3_keeps_statements_then_passage(self) -> None:
+        text = (
+            "1. Укажите варианты ответов, в которых даны верные характеристики текста. Запишите номера ответов. Ответ____________.\n"
+            "1. В тексте отсутствует эмоционально окрашенная лексика, слова используются в прямом значении.\n"
+            "2. Логичное и последовательное изложение материала достигается за счёт сложных предложений.\n"
+            "3. Текст содержит слова определённой тематической группы (осаду, пехота, артиллерия).\n"
+            "4. Текст характеризуется типичной для официально-делового стиля точностью речи.\n"
+            "5. Текст относится к научному стилю, так как основная цель автора — передача информации.\n"
+            "Не стану описывать оренбургскую осаду, которая принадлежит истории, а не семейственным запискам. "
+            "(По А. С. Пушкину)\n"
+            "2. Укажите варианты ответов, в которых даны верные характеристики текста. Запишите номера ответов. Ответ____________.\n"
+            "1. Текст относится к публицистическому стилю.\n"
+            "2. Жанр текста — публичное выступление.\n"
+            "3. Характерные слова с морфемой все- относятся к общественно-политической лексике.\n"
+            "4. Выразительность текста обеспечивается синтаксическими средствами.\n"
+            "5. Использование эпитетов позволяет усилить эмоциональность высказывания.\n"
+            "Для Пушкина характерна черта художественного гения. (Из Пушкинской речи Ф. М. Достоевского)\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        self.assertEqual([task["n"] for task in tasks], [1, 2])
+        self.assertFalse(journal.is_word_task(tasks[0]))
+        self.assertEqual(len([item for item in tasks[0]["options"] if item]), 5)
+        self.assertIn("номера ответов", tasks[0]["prompt"])
+        self.assertIn("Не стану описывать", tasks[0].get("passage") or "")
+        self.assertNotIn("Не стану описывать", " ".join(tasks[0]["options"]))
+
+
+@unittest.skipUnless(all((SEED_DIR / name).is_file() for name in SEED_FILES.values()), "нет PDF заданий 1–3")
+class SeedTask123PdfTest(unittest.TestCase):
+    def test_seed_pdfs_match_file_structure(self) -> None:
+        expected = {
+            1: {"word": True, "options": False, "prompt": "Самостоятельно подберите", "text": "Не стану описывать"},
+            2: {"word": False, "options": True, "prompt": "лексическое значение", "text": "Не стану описывать"},
+            3: {"word": False, "options": True, "prompt": "верные характеристики текста", "text": "Не стану описывать"},
+        }
+        for number, name in SEED_FILES.items():
+            with self.subTest(file=name):
+                path = SEED_DIR / name
+                bank = pdf_import.import_pdf_bytes(path.read_bytes(), f"Задание {number}.pdf", f"pdf-ege{number}")
+                self.assertEqual(bank["title"], f"Задание {number}")
+                tasks = bank["tasks"]
+                self.assertGreaterEqual(len(tasks), 90)
+                self.assertEqual([task["n"] for task in tasks], list(range(1, len(tasks) + 1)))
+                first = tasks[0]
+                want = expected[number]
+                self.assertEqual(journal.is_word_task(first), want["word"])
+                filled = [item for item in (first.get("options") or []) if item]
+                if want["options"]:
+                    self.assertEqual(len(filled), 5)
+                    self.assertIn(want["text"], first.get("passage") or "")
+                    self.assertNotIn(want["text"], filled[4])
+                else:
+                    self.assertFalse(filled)
+                    self.assertIn(want["text"], first["prompt"])
+                    parts = [part.strip() for part in first["prompt"].split("\n\n") if part.strip()]
+                    self.assertEqual(len(parts), 2)
+                self.assertIn(want["prompt"], first["prompt"])
+                self.assertNotIn("________", first["prompt"])
 
 
 if __name__ == "__main__":

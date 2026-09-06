@@ -78,7 +78,8 @@ if ! grep -q "copy-table-btn" "$STAGE/static/app.js" ||
    ! grep -q "attach_row_file" "$STAGE/journal.py" ||
    ! grep -q "public_student_summary" "$STAGE/journal.py" ||
    ! grep -q "formatStoredPrompt" "$STAGE/static/app.js" ||
-   ! grep -q "task-prompt-flow" "$STAGE/static/app.js"; then
+   ! grep -q "task-prompt-flow" "$STAGE/static/app.js" ||
+   ! grep -q "task.passage" "$STAGE/static/app.js"; then
   echo "ОШИБКА: загружена не та версия app.js. Сайт не изменён."
   exit 1
 fi
@@ -131,9 +132,9 @@ path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
 replacements = {
-    r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=task21-split5',
-    r'mobile\.css(?:\?v=[^"]*)?': 'mobile.css?v=task21-split5',
-    r'app\.js(?:\?v=[^"]*)?': 'app.js?v=task21-split5',
+    r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=ege123-1',
+    r'mobile\.css(?:\?v=[^"]*)?': 'mobile.css?v=ege123-1',
+    r'app\.js(?:\?v=[^"]*)?': 'app.js?v=ege123-1',
     r'find-date\.js(?:\?v=[^"]*)?': 'find-date.js?v=class-bar1',
     r'practice-page\.js(?:\?v=[^"]*)?': 'practice-page.js?v=2',
     r'practice-scales\.css(?:\?v=[^"]*)?': 'practice-scales.css?v=2',
@@ -150,6 +151,30 @@ then
   exit 1
 fi
 
+if [ -f "$STAGE/seed-pdfs/ege-1.pdf" ]; then
+  if ! python3 - <<'PY'
+import importlib.util
+import os
+import sys
+from pathlib import Path
+
+stage = Path(os.environ.get("JOURNAL_STAGE", "/tmp/journal-release"))
+app_root = Path(os.environ.get("JOURNAL_APP_ROOT", "/var/www/journal"))
+spec = importlib.util.spec_from_file_location("deploy_production", stage / "tools" / "deploy-production.py")
+mod = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(mod)
+mod.STAGE = stage
+mod.APP_ROOT = app_root
+mod.install_seed_banks()
+PY
+  then
+    restore_files
+    echo "ОШИБКА: банки заданий 1–3 не установлены. Восстановлена прежняя версия."
+    exit 1
+  fi
+fi
+
 restart_on_8765() {
   systemctl stop journal
   pkill -9 -f '/var/www/journal/.venv/bin/python.*server.py' || true
@@ -164,7 +189,7 @@ restart_on_8765
 
 local_code="$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ || true)"
 app_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/app.js | grep -c 'restorePracticeScroll' || true)"
-index_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/ | grep -c 'task21-split5' || true)"
+index_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/ | grep -c 'ege123-1' || true)"
 api_code="$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/api/students || true)"
 
 echo "Проверка: site=$local_code app=$app_marker index=$index_marker api=$api_code"

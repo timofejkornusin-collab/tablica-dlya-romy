@@ -14,6 +14,7 @@ index.html wholesale: it only patches cache-buster query strings.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import py_compile
 import re
@@ -48,6 +49,12 @@ REQUIRED = (
     "static/practice-page.js",
     "static/find-date.js",
     "tools/production_students_safety.py",
+)
+
+SEED_PDFS = (
+    ("ege-1.pdf", "Задание 1.pdf", "pdf-ege1"),
+    ("ege-2.pdf", "Задание 2.pdf", "pdf-ege2"),
+    ("ege-3.pdf", "Задание 3.pdf", "pdf-ege3"),
 )
 
 APP_MARKERS = (
@@ -91,12 +98,13 @@ APP_MARKERS = (
     "Сервер не ответил",
     "formatStoredPrompt",
     "task-prompt-flow",
+    "task.passage",
 )
 
 CACHE_BUSTERS = {
-    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=task21-split5",
-    r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=task21-split5",
-    r'app\.js(?:\?v=[^"]*)?': "app.js?v=task21-split5",
+    r'styles\.css(?:\?v=[^"]*)?': "styles.css?v=ege123-1",
+    r'mobile\.css(?:\?v=[^"]*)?': "mobile.css?v=ege123-1",
+    r'app\.js(?:\?v=[^"]*)?': "app.js?v=ege123-1",
     r'find-date\.js(?:\?v=[^"]*)?': "find-date.js?v=class-bar1",
     r'practice-page\.js(?:\?v=[^"]*)?': "practice-page.js?v=2",
     r'practice-scales\.css(?:\?v=[^"]*)?': "practice-scales.css?v=2",
@@ -452,11 +460,48 @@ def install_stage() -> None:
         fail("ОШИБКА: файлы не установлены. Восстановлена прежняя версия.")
 
 
+def _load_app_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        fail("ОШИБКА: не прочитан %s." % path.name)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def install_seed_banks() -> None:
+    seed = STAGE / "seed-pdfs"
+    present = [item for item in SEED_PDFS if (seed / item[0]).is_file()]
+    if not present:
+        return
+    if len(present) != len(SEED_PDFS):
+        fail("ОШИБКА: в выкладке не все PDF заданий 1–3. Сайт не изменён.")
+    saved = {name: sys.modules.get(name) for name in ("pdf_import", "journal")}
+    try:
+        pdf_mod = _load_app_module("pdf_import", APP_ROOT / "pdf_import.py")
+        journal_mod = _load_app_module("journal", APP_ROOT / "journal.py")
+        for src, title, bank_id in SEED_PDFS:
+            path = seed / src
+            bank = pdf_mod.import_pdf_bytes(path.read_bytes(), title, bank_id)
+            tasks = bank.get("tasks") or []
+            if len(tasks) < 90:
+                fail("ОШИБКА: PDF %s разобран плохо (%s заданий)." % (title, len(tasks)))
+            journal_mod.save_bank(bank)
+            print("Банк %s: %s заданий" % (bank.get("title") or title, len(tasks)))
+    finally:
+        for name, module in saved.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+
 def verify_live() -> tuple[str, str, str]:
     installed_app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8", errors="replace")
     installed_index = (STATIC_ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
     app_marker = "1" if "restorePracticeScroll" in installed_app else "0"
-    index_marker = "1" if "task21-split5" in installed_index else "0"
+    index_marker = "1" if "ege123-1" in installed_index else "0"
 
     if SKIP_HEALTHCHECK:
         local_code = "200"
@@ -468,7 +513,7 @@ def verify_live() -> tuple[str, str, str]:
         live_app = curl_body(LOCAL_URL + "/app.js")
         live_index = curl_body(LOCAL_URL + "/")
         app_marker = str(live_app.count("restorePracticeScroll"))
-        index_marker = str(live_index.count("task21-split5"))
+        index_marker = str(live_index.count("ege123-1"))
         api_code = wait_for_students()
         python_8766 = curl_code("http://127.0.0.1:8766/", timeout=3)
         site_code = curl_code(SITE_URL, timeout=10)
@@ -499,6 +544,14 @@ def main() -> None:
     require_python_and_markers()
     backup_current()
     install_stage()
+    try:
+        install_seed_banks()
+    except SystemExit:
+        restore_files()
+        raise
+    except Exception:
+        restore_files()
+        fail("ОШИБКА: банки заданий 1–3 не установлены. Восстановлена прежняя версия.")
     restart_on_8765()
     local_code, python_8766, site_code = verify_live()
     print("ГОТОВО. ВСЕ ИЗМЕНЕНИЯ УСТАНОВЛЕНЫ.")
