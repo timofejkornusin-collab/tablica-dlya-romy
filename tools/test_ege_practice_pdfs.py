@@ -96,6 +96,10 @@ class SyntheticPdfImportTest(unittest.TestCase):
         self.assertIn("Шопен", tasks[1]["prompt"])
         self.assertNotIn("Ответ", tasks[1]["prompt"])
         self.assertTrue(journal.is_word_task(tasks[1]))
+        extra_word = [part.strip() for part in tasks[1]["prompt"].split("\n\n") if part.strip()]
+        self.assertEqual(len(extra_word), 2, tasks[1]["prompt"])
+        self.assertTrue(extra_word[0].endswith("Запишите это слово."))
+        self.assertTrue(extra_word[1].startswith("Композитор Шопен"))
 
     def test_inline_word_and_long_keys_are_kept(self) -> None:
         text = (
@@ -329,6 +333,57 @@ class PromptParagraphSplitTest(unittest.TestCase):
         again = pdf_import.format_stored_prompt(pdf_import.format_stored_prompt(fifteen))
         self.assertEqual(again, pdf_import.format_stored_prompt(fifteen))
 
+    def test_task6_splits_instruction_from_sentence(self) -> None:
+        chopped = (
+            "Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. "
+            "Запишите подобранное слово, соблюдая нормы современного русского литературного языка и сохраняя смысл высказывания. "
+            "Учился Фредерик Шопен старательно и серьёзно, из всех предметов делал предпочтение истории и польской литературе"
+        )
+        short = (
+            "Отредактируйте предложение: исправьте лексическую ошибку, исключив лишнее слово. "
+            "Запишите это слово. Композитор Шопен выступал в концертах этой зимы."
+        )
+        language_only = (
+            "Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. "
+            "Запишите подобранное слово, соблюдая нормы современного русского литературного языка. "
+            "Предельный срок подачи документов истекает завтра."
+        )
+        first = self._parts(pdf_import.format_stored_prompt(chopped))
+        self.assertEqual(len(first), 2, first)
+        self.assertTrue(first[0].endswith("смысл высказывания."))
+        self.assertTrue(first[1].startswith("Учился Фредерик Шопен"))
+        self.assertNotIn("Учился", first[0])
+        second = self._parts(pdf_import.format_stored_prompt(short))
+        self.assertTrue(second[0].endswith("Запишите это слово."))
+        self.assertTrue(second[1].startswith("Композитор Шопен"))
+        third = self._parts(pdf_import.format_stored_prompt(language_only))
+        self.assertTrue(third[0].endswith("литературного языка."))
+        self.assertTrue(third[1].startswith("Предельный срок"))
+        again = pdf_import.format_stored_prompt(pdf_import.format_stored_prompt(chopped))
+        self.assertEqual(again, pdf_import.format_stored_prompt(chopped))
+
+    def test_task6_pdf_layout_splits_instruction_and_sentence(self) -> None:
+        text = (
+            "1.Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. "
+            "Запишите подобранное слово, соблюдая нормы современного русского литературного языка и сохраняя смысл высказывания. "
+            "Ответ: ________________.\n"
+            "Учился Фредерик Шопен старательно и серьёзно, из всех предметов делал предпочтение истории и польской литературе.\n"
+            "2.Отредактируйте предложение: исправьте лексическую ошибку, исключив лишнее слово. "
+            "Выпишите это слово, соблюдая нормы современного русского литературного языка. Ответ: ________________.\n"
+            "В своём сочинении я хотел показать значение спорта и почему я им увлекаюсь.\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        first = self._parts(tasks[0]["prompt"])
+        second = self._parts(tasks[1]["prompt"])
+        self.assertEqual(len(first), 2, tasks[0]["prompt"])
+        self.assertTrue(first[0].endswith("смысл высказывания."))
+        self.assertTrue(first[1].startswith("Учился Фредерик Шопен"))
+        self.assertNotIn("Учился", first[0])
+        self.assertTrue(second[0].endswith("литературного языка."))
+        self.assertTrue(second[1].startswith("В своём сочинении"))
+        self.assertTrue(journal.is_word_task(tasks[0]))
+        self.assertTrue(journal.is_word_task(tasks[1]))
+
     def test_task17_pdf_layout_splits_instruction_and_sentence(self) -> None:
         text = (
             "1.Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). Ответ: ________________.\n"
@@ -360,15 +415,26 @@ class PromptParagraphSplitTest(unittest.TestCase):
                     "n": 2,
                     "prompt": "Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). Войдя в номер (1) проезжий тотчас сбросил шинель.",
                 },
+                {
+                    "n": 3,
+                    "prompt": (
+                        "Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. "
+                        "Запишите подобранное слово, соблюдая нормы современного русского литературного языка и сохраняя смысл высказывания. "
+                        "Учился Фредерик Шопен старательно и серьёзно."
+                    ),
+                },
             ],
         }
         payload = journal.public_practice(bank, {"id": "s", "name": "рома", "progress": {}}, "teacher")
         first = self._parts(payload["tasks"][0]["prompt"])
         second = self._parts(payload["tasks"][1]["prompt"])
+        third = self._parts(payload["tasks"][2]["prompt"])
         self.assertTrue(first[0].endswith("пишется НН."))
         self.assertTrue(first[1].startswith("Все дома"))
         self.assertTrue(second[0].endswith("запятая(-ые)."))
         self.assertTrue(second[1].startswith("Войдя в номер"))
+        self.assertTrue(third[0].endswith("смысл высказывания."))
+        self.assertTrue(third[1].startswith("Учился Фредерик Шопен"))
         self.assertTrue(self._parts(payload["instruction"])[0].endswith("пишется НН."))
 
     def test_frontend_keeps_format_stored_prompt(self) -> None:
@@ -377,6 +443,8 @@ class PromptParagraphSplitTest(unittest.TestCase):
         self.assertIn("function formatStoredPrompt(text)", app_js)
         self.assertIn(r"запятая\(-ые\)", app_js)
         self.assertIn(r"одна\s+буква\s+Н", app_js)
+        self.assertIn("смысл высказывания", app_js)
+        self.assertIn("литературного языка", app_js)
         self.assertIn("body.practice-open #page-subtitle", styles)
         self.assertIn('setPageSubtitle("");', app_js)
 
@@ -396,6 +464,9 @@ class PromptParagraphSplitTest(unittest.TestCase):
             "Укажите цифру(-ы), на месте которой(-ых) пишется\n\nодна буква Н. Надпись напомнила ему телеграмму",
             "Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). Войдя в номер (1) проезжий тотчас сбросил шинель.",
             "Укажите цифру(-ы), на месте которой(-ых) должна(-ы) стоять запятая(-ые). — Эй ты, — крикнул он (1) громко",
+            "Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. Запишите подобранное слово, соблюдая нормы современного русского литературного языка и сохраняя смысл высказывания. Учился Фредерик Шопен старательно и серьёзно.",
+            "Отредактируйте предложение: исправьте лексическую ошибку, исключив лишнее слово. Запишите это слово. Композитор Шопен выступал в концертах этой зимы.",
+            "Отредактируйте предложение: исправьте лексическую ошибку, заменив употреблённое неверно слово. Запишите подобранное слово, соблюдая нормы современного русского литературного языка. Предельный срок подачи документов истекает завтра.",
         ]
         script = (
             app[start:end]
