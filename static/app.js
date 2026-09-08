@@ -743,18 +743,37 @@ function showLoginScreen() {
   if (els.loginName) els.loginName.focus();
 }
 
-function accessMessage(name, login, password) {
-  const lines = [`Журнал русского языка — кабинет ученика${name ? ` (${name})` : ""}`];
-  if (state.publicUrl) {
-    lines.push(`Ссылка: ${state.publicUrl}`);
+function isEphemeralShareUrl(url) {
+  return /pinggy|trycloudflare\.com|ngrok|loca\.lt/i.test(String(url || ""));
+}
+
+function studentShareUrl() {
+  const host = String((typeof location !== "undefined" && location.hostname) || "")
+    .replace(/^www\./i, "")
+    .toLowerCase();
+  if (host === "rusklasst.ru") return "https://rusklasst.ru";
+  const fromApi = String(state.publicUrl || "").trim().replace(/\/+$/, "");
+  if (fromApi && !isEphemeralShareUrl(fromApi)) {
+    try {
+      const apiHost = new URL(fromApi).hostname.replace(/^www\./i, "").toLowerCase();
+      if (apiHost === "rusklasst.ru") return "https://rusklasst.ru";
+    } catch (_error) {
+      /* старая ссылка туннеля */
+    }
   }
-  lines.push(`Логин: ${login}`, `Пароль: ${password}`, "");
-  lines.push(
-    state.publicUrl
-      ? "Откройте ссылку, введите логин и пароль — откроется только ваша таблица."
-      : "Введите логин и пароль на странице входа — откроется только ваша таблица."
-  );
-  return lines.join("\n");
+  return "https://rusklasst.ru";
+}
+
+function accessMessage(name, login, password) {
+  const site = studentShareUrl();
+  return [
+    `Журнал русского языка — кабинет ученика${name ? ` (${name})` : ""}`,
+    `Ссылка: ${site}`,
+    `Логин: ${login}`,
+    `Пароль: ${password}`,
+    "",
+    "Откройте ссылку, введите логин и пароль — откроется только ваша таблица.",
+  ].join("\n");
 }
 
 function showCreatedAccess(name, login, password, lead) {
@@ -2590,7 +2609,7 @@ els.practiceView.addEventListener("click", async (event) => {
 
 if (els.copyLinkBtn) {
   els.copyLinkBtn.addEventListener("click", async () => {
-    const text = state.publicUrl;
+    const text = studentShareUrl();
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);

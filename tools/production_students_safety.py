@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
+import os
 import re
 import secrets
 import traceback
@@ -20,6 +21,7 @@ from urllib.parse import unquote
 
 
 ERROR_LOG = Path("/tmp/journal-students-error.log")
+STUDENT_SITE_URL = "https://rusklasst.ru"
 _grade_job = contextvars.ContextVar("journal_grade_job", default=None)
 UPLOAD_EXTENSIONS = {
     ".pdf",
@@ -76,6 +78,55 @@ def _send_json(handler, payload, status: int = 200) -> None:
             pass
     except Exception as exc:
         _write_error(exc)
+
+
+def student_site_url() -> str:
+    configured = os.environ.get("JOURNAL_PUBLIC_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+    return STUDENT_SITE_URL
+
+
+def _tunnel_disabled() -> bool:
+    if os.environ.get("JOURNAL_DISABLE_TUNNEL") == "1":
+        return True
+    if os.environ.get("JOURNAL_PUBLIC_URL", "").strip():
+        return True
+    if os.environ.get("INVOCATION_ID"):
+        return True
+    return False
+
+
+def _wrap_session_payload(handler_cls) -> None:
+    orig = getattr(handler_cls, "_session_payload", None)
+    if not callable(orig) or getattr(orig, "_journal_student_site", False):
+        return
+
+    def _session_payload(self, user):
+        payload = orig(self, user)
+        if isinstance(payload, dict):
+            payload["publicUrl"] = student_site_url()
+        return payload
+
+    _session_payload._journal_student_site = True
+    handler_cls._session_payload = _session_payload
+
+
+def _wrap_start_tunnel(g: dict) -> None:
+    orig = g.get("start_tunnel")
+    if not callable(orig) or getattr(orig, "_journal_student_site", False):
+        return
+
+    def start_tunnel(port):
+        if _tunnel_disabled():
+            g["PUBLIC_URL"] = student_site_url()
+            g["TUNNEL_ERROR"] = ""
+            print("Сайт для ученика: %s" % g["PUBLIC_URL"], flush=True)
+            return
+        orig(port)
+
+    start_tunnel._journal_student_site = True
+    g["start_tunnel"] = start_tunnel
 
 
 def _find_handler(g: dict):
@@ -1041,6 +1092,8 @@ def install(g: dict) -> bool:
     _wrap_read_json(handler_cls)
     _wrap_save_data(g)
     _wrap_handler_send_json(handler_cls)
+    _wrap_session_payload(handler_cls)
+    _wrap_start_tunnel(g)
 
     def do_GET(self):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"

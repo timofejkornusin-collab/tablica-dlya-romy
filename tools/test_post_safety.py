@@ -50,6 +50,8 @@ class SafetyLivePostTest(unittest.TestCase):
         self._real_send = server.Handler._send_json
         self._real_read = server.Handler._read_json
         self._real_save = server.save_data
+        self._real_session = server.Handler._session_payload
+        self._real_tunnel = server.start_tunnel
 
         self.patches = [
             patch.object(server, "DATA_DIR", data_dir),
@@ -85,6 +87,8 @@ class SafetyLivePostTest(unittest.TestCase):
         server.Handler.do_POST = self._real_post
         server.Handler._send_json = self._real_send
         server.Handler._read_json = self._real_read
+        server.Handler._session_payload = self._real_session
+        server.start_tunnel = self._real_tunnel
         server.save_data = self._real_save
         for item in reversed(self.patches):
             item.stop()
@@ -174,3 +178,11 @@ class SafetyLivePostTest(unittest.TestCase):
         self.assertTrue(deleted.get("ok"))
         remaining = json.loads(self.data_file.read_text(encoding="utf-8"))
         self.assertEqual(remaining.get("students"), [])
+
+    def test_session_public_url_is_rusklasst_not_pinggy(self) -> None:
+        server.PUBLIC_URL = "https://xygbm-45-153-190-116.run.pinggy-free.link"
+        req = urllib.request.Request(self._url("/api/session"))
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(data.get("publicUrl"), "https://rusklasst.ru")
+        self.assertNotIn("pinggy", str(data.get("publicUrl") or "").lower())

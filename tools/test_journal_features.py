@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -371,7 +372,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=ege123-2", html)
+        self.assertIn("app.js?v=siteurl1", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):
@@ -989,6 +990,38 @@ class PurgeBankTest(unittest.TestCase):
         self.assertEqual(err, "")
         self.assertEqual(data["students"][0]["rows"][0]["bankId"], "")
         self.assertEqual(data["students"][0]["rows"][0]["importedSource"], "manual:")
+
+
+class StudentShareUrlTest(unittest.TestCase):
+    def test_student_share_url_ignores_pinggy(self) -> None:
+        pinggy = "https://xygbm-45-153-190-116.run.pinggy-free.link"
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("JOURNAL_PUBLIC_URL", None)
+            os.environ.pop("INVOCATION_ID", None)
+            os.environ.pop("JOURNAL_DISABLE_TUNNEL", None)
+            self.assertEqual(server.student_share_url(pinggy), "https://rusklasst.ru")
+            self.assertEqual(server.student_share_url(""), "https://rusklasst.ru")
+            self.assertTrue(server.should_start_tunnel())
+        with patch.dict(os.environ, {"JOURNAL_PUBLIC_URL": "https://example.test"}):
+            self.assertEqual(server.student_share_url(pinggy), "https://example.test")
+            self.assertFalse(server.should_start_tunnel())
+        with patch.dict(os.environ, {"INVOCATION_ID": "svc"}):
+            self.assertFalse(server.should_start_tunnel())
+        with patch.dict(os.environ, {"JOURNAL_DISABLE_TUNNEL": "1"}):
+            self.assertFalse(server.should_start_tunnel())
+
+    def test_access_message_always_gives_rusklasst(self) -> None:
+        app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function studentShareUrl()", app_js)
+        self.assertIn("function isEphemeralShareUrl(", app_js)
+        self.assertIn("https://rusklasst.ru", app_js)
+        self.assertIn("const site = studentShareUrl();", app_js)
+        self.assertIn("`Ссылка: ${site}`", app_js)
+        self.assertNotIn("lines.push(`Ссылка: ${state.publicUrl}`)", app_js)
+        self.assertIn("pinggy", app_js)
+        self.assertIn("const text = studentShareUrl();", app_js)
+        html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("app.js?v=siteurl1", html)
 
 
 if __name__ == "__main__":

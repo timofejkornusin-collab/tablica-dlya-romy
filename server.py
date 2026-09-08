@@ -50,6 +50,8 @@ SESSIONS: dict[str, dict] = {}
 PUBLIC_URL = ""
 TUNNEL_ERROR = ""
 TUNNEL_PROC: subprocess.Popen | None = None
+STUDENT_SITE_URL = "https://rusklasst.ru"
+EPHEMERAL_SHARE_RE = re.compile(r"pinggy|trycloudflare\.com|ngrok|loca\.lt", re.I)
 WIFI_NAME_CACHE = ""
 LAN_IP_CACHE = ""
 LAN_IPS_CACHE: list[str] = []
@@ -545,6 +547,29 @@ PINGGY_URL_RE = re.compile(r"https?://[A-Za-z0-9.-]*pinggy[A-Za-z0-9.-]*")
 CLOUDFLARE_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
+def student_share_url(candidate: str = "") -> str:
+    """Ссылка, которую ученик открывает. Не Pinggy и не Cloudflare-туннель."""
+    configured = os.environ.get("JOURNAL_PUBLIC_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+    text = str(candidate or "").strip().rstrip("/")
+    if text and not EPHEMERAL_SHARE_RE.search(text):
+        host = (urlparse(text).hostname or "").replace("www.", "").lower()
+        if host == "rusklasst.ru":
+            return STUDENT_SITE_URL
+    return STUDENT_SITE_URL
+
+
+def should_start_tunnel() -> bool:
+    if os.environ.get("JOURNAL_DISABLE_TUNNEL") == "1":
+        return False
+    if os.environ.get("JOURNAL_PUBLIC_URL", "").strip():
+        return False
+    if os.environ.get("INVOCATION_ID"):
+        return False
+    return True
+
+
 def _announce_public_url(port: int) -> None:
     print("", flush=True)
     print("Ссылка для телефона и ученика (откроется из любой сети):", flush=True)
@@ -812,7 +837,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "studentId": user.get("student_id"),
             },
             "localTeacher": bool(user and user.get("local")),
-            "publicUrl": PUBLIC_URL,
+            "publicUrl": student_share_url(PUBLIC_URL),
             "localUrl": f"http://127.0.0.1:{port}/",
             "lanUrl": f"http://{lan_ip()}:{port}/",
             "lanUrls": [f"http://{ip}:{port}/" for ip in lan_ips()],
@@ -1634,7 +1659,7 @@ class JournalServer(ThreadingHTTPServer):
 
 
 def main() -> None:
-    global TUNNEL_PROC
+    global TUNNEL_PROC, PUBLIC_URL, TUNNEL_ERROR
     if hasattr(sys.stdout, "reconfigure"):
         try:
             sys.stdout.reconfigure(encoding="utf-8")
@@ -1655,11 +1680,16 @@ def main() -> None:
     print("", flush=True)
     ssid = wifi_name()
     wifi = f" «{ssid}»" if ssid else ""
-    print(f"Готовлю ссылку для телефона. Запасной адрес в Wi-Fi{wifi}:", flush=True)
-    print(f"http://{lan_ip()}:{port}/", flush=True)
-    print("На телефоне вводите http://, не https://", flush=True)
-    print("Если Wi-Fi не открывается — файл «разрешить-телефон.bat», кнопка Да.", flush=True)
-    start_tunnel(port)
+    print(f"Сайт для ученика: {student_share_url()}", flush=True)
+    if should_start_tunnel():
+        print(f"Готовлю ссылку для телефона. Запасной адрес в Wi-Fi{wifi}:", flush=True)
+        print(f"http://{lan_ip()}:{port}/", flush=True)
+        print("На телефоне вводите http://, не https://", flush=True)
+        print("Если Wi-Fi не открывается — файл «разрешить-телефон.bat», кнопка Да.", flush=True)
+        start_tunnel(port)
+    else:
+        PUBLIC_URL = student_share_url()
+        TUNNEL_ERROR = ""
     print("Чтобы закрыть программу, закройте это окно.", flush=True)
     threading.Timer(0.6, lambda: webbrowser.open(local_url)).start()
     try:
