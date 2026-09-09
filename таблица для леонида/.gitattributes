@@ -1,0 +1,4 @@
+# Keep Unix scripts as LF even when the repo is cloned or archived on Windows.
+# Windows CRLF in .sh files makes Linux bash fail with `$'\r': command not found`.
+*.sh text eol=lf
+*.py text eol=lf

@@ -1,0 +1,351 @@
+/* Телефон и планшет: карточки на всю ширину, без узкого столбика слева. */
+@media (max-width: 980px) {
+  #list-view.hidden,
+  #table-view.hidden,
+  #practice-view.hidden {
+    display: none !important;
+  }
+
+  #table-view:not(.hidden) .table-wrap,
+  .table-wrap,
+  .lesson-cards,
+  table,
+  .lesson-cards table,
+  tbody,
+  .lesson-cards tbody {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .table-wrap,
+  .lesson-cards {
+    overflow: visible !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  table thead,
+  .lesson-cards thead {
+    display: none !important;
+  }
+
+  tbody,
+  .lesson-cards tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+
+  tbody tr,
+  .lesson-cards tbody tr {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    background: #fff !important;
+    border: 1px solid #ded4c2 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 6px rgba(33, 28, 25, 0.04) !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  tbody tr.lesson-upcoming::before,
+  .lesson-cards tbody tr.lesson-upcoming::before {
+    content: "Следующий урок" !important;
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 8px 14px !important;
+    background: #fdf5e7 !important;
+    color: #18334c !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+  }
+
+  td,
+  td.col-date,
+  td.col-topic,
+  td.col-theory,
+  td.col-practice,
+  td.col-progress,
+  td.col-homework,
+  td.col-comment,
+  td.col-row-tools,
+  .lesson-cards td {
+    display: grid !important;
+    grid-template-columns: minmax(7rem, 38%) minmax(0, 1fr) !important;
+    gap: 8px 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 0 0 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 12px 14px !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid #ded4c2 !important;
+    box-sizing: border-box !important;
+  }
+
+  td:last-child,
+  .lesson-cards td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  td textarea,
+  td input:not(.visually-hidden):not(.file-pick),
+  .cell-fill,
+  .material-cell,
+  .material-cell textarea,
+  .practice-box,
+  .progress-swatch {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  td input.visually-hidden,
+  .visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    inset: auto !important;
+    border: 0 !important;
+  }
+
+  td.col-date textarea,
+  td.col-date .cell-fill {
+    min-height: 44px !important;
+    white-space: nowrap !important;
+    overflow-x: auto !important;
+  }
+
+  td.col-date .date-cell {
+    position: static !important;
+    inset: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  td.col-date .lesson-status-controls {
+    padding: 7px 0 0 !important;
+  }
+
+  td.col-date .lesson-status-btn {
+    min-height: 36px;
+    font-size: 0.76rem;
+  }
+
+  td.col-date .lesson-status-badge {
+    margin: 7px 0 0;
+  }
+
+  td.col-date .date-cell-bottom {
+    width: 100%;
+  }
+
+  td.col-date .date-row-tools {
+    padding: 6px 0 0 !important;
+    justify-content: flex-start !important;
+  }
+
+  td.col-date .row-copy-btn,
+  td.col-date .row-paste-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .material-tools {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+
+  .file-corner,
+  .practice-upload {
+    position: relative !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 44px !important;
+    padding: 10px 14px !important;
+    overflow: hidden !important;
+    align-self: stretch !important;
+    box-sizing: border-box !important;
+  }
+
+  td input.file-pick,
+  .file-pick {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    opacity: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    clip: auto !important;
+    overflow: hidden !important;
+    cursor: pointer !important;
+  }
+
+  .file-corner .attach-file-label,
+  .practice-upload .attach-file-label {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    clip: auto !important;
+    white-space: nowrap !important;
+  }
+
+  .attach-file-short {
+    display: none !important;
+  }
+
+  .practice-actions,
+  .bank-picker {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    gap: 8px !important;
+  }
+
+  .bank-picker-toggle,
+  .practice-open-hint,
+  .practice-link {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  .material-cell.student-material {
+    border: 0 !important;
+    background: transparent !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  tbody tr.insert-gap,
+  .lesson-cards tbody tr.insert-gap {
+    overflow: visible !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .insert-gap td {
+    display: flex !important;
+    grid-template-columns: none !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+}
+
+@media (max-width: 560px) {
+  td,
+  td.col-date,
+  td.col-topic,
+  td.col-theory,
+  td.col-practice,
+  td.col-progress,
+  td.col-homework,
+  td.col-comment,
+  .lesson-cards td {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+#list-view.hidden,
+#table-view.hidden,
+#practice-view.hidden {
+  display: none !important;
+}
+
+#practice-view:not(.hidden) {
+  display: block !important;
+}
+
+@media (max-width: 980px) {
+  body.practice-open {
+    overflow: hidden;
+  }
+
+  body.practice-open #table-view,
+  body.practice-open #list-view,
+  body.practice-open .share-bar,
+  body.practice-open .preview-banner,
+  body.practice-open .topbar {
+    display: none !important;
+  }
+
+  #practice-view:not(.hidden) {
+    position: fixed;
+    inset: 0;
+    z-index: 180;
+    overflow: auto;
+    overflow-anchor: none;
+    background: #f5f0e6;
+    padding: 12px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
+  }
+
+  .practice-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: -12px -12px 14px;
+    padding: 12px;
+    background: #f5f0e6;
+  }
+
+  .practice-toolbar .practice-back {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .practice-toolbar h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: #18334c;
+  }
+}
