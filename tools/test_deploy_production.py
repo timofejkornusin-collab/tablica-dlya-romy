@@ -47,7 +47,7 @@ class DeployProductionTest(unittest.TestCase):
             "function restorePracticeScroll() {}\nconst keepScroll = true;\n"
             "function applyCopiedTable() {}\nfunction applyCopiedRow() {}\nfunction bumpSaveEpoch() {}\n"
             "function syncStartDateWeekday() {}\nconst keepRicher = true;\n"
-            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\nconst attachLabel = 'attach-file-label';\nfunction updateLogoutButton() {}\nfunction ensureTableActionLayout() {}\nfunction updateBrandPill() {}\nfunction ensureGradeField() {}\nconst pick = 'file-pick';\nconst needsImport = 'needsImport';\nconst serverDown = 'Сервер не ответил';\nfunction formatStoredPrompt() {}\nconst flow = 'task-prompt-flow';\nconst passage = 'task.passage';\nfunction studentShareUrl() {}\n",
+            "const copyRow = 'row-copy-btn';\nfunction importLinkedPdfs() {}\nfunction ensureEndDateField() {}\nfunction trimRowsToScheduleEnd() {}\nfunction extraLessonRow() {}\nfunction startErrorHtml() {}\nfunction hideUnwantedLabels() {}\nfunction setPageSubtitle() {}\nfunction deletePracticeBank() {}\nconst bankDelete = 'bank-delete';\nconst bankToggle = 'bank-picker-toggle';\nconst bankChoice = 'bank-picker-choice';\nconst bankName = 'bank-picker-name';\nconst openHint = 'practice-open-hint';\nconst practiceUpload = 'practice-upload';\nconst layer = 'bank-picker-layer';\nconst list = 'bank-picker-list';\nconst theoryFiles = 'theoryFiles';\nfunction rowTheoryFiles() {}\nfunction renderStudentTextCell() {}\nconst attachLabel = 'attach-file-label';\nfunction updateLogoutButton() {}\nfunction ensureTableActionLayout() {}\nfunction updateBrandPill() {}\nfunction ensureGradeField() {}\nconst pick = 'file-pick';\nconst needsImport = 'needsImport';\nconst serverDown = 'Сервер не ответил';\nfunction formatStoredPrompt() {}\nconst flow = 'task-prompt-flow';\nconst passage = 'task.passage';\nfunction studentShareUrl() {}\nfunction shouldShowLogin() {}\nfunction isPublicJournalHost() {}\n",
             encoding="utf-8",
         )
         (self.stage / "static" / "practice-page.js").write_text(
@@ -102,7 +102,7 @@ class DeployProductionTest(unittest.TestCase):
         text = path.read_text(encoding="utf-8")
         self.assertIn("styles.css?v=ege123-2", text)
         self.assertIn("mobile.css?v=ege123-2", text)
-        self.assertIn("app.js?v=siteurl1", text)
+        self.assertIn("app.js?v=authlock1", text)
         self.assertIn("find-date.js?v=class-bar1", text)
         self.assertIn("practice-page.js?v=2", text)
         self.assertIn("practice-scales.css?v=2", text)
@@ -227,6 +227,24 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn('"publicUrl": "https://rusklasst.ru"', text)
         self.assertNotIn('"publicUrl": PUBLIC_URL', text)
 
+    def test_patch_server_disables_loopback_teacher(self) -> None:
+        deploy = load_deploy()
+        path = self.app / "server.py"
+        path.write_text(
+            "class H:\n"
+            "    def _user(self):\n"
+            "        if is_loopback(self.client_address[0]):\n"
+            '            return {\n'
+            '                "role": "teacher",\n'
+            '                "local": True,\n'
+            "            }\n",
+            encoding="utf-8",
+        )
+        deploy.patch_server(path)
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("if False:", text)
+        self.assertNotIn("if is_loopback(self.client_address[0]):", text)
+
     def test_patch_server_always_installs_students_handler(self) -> None:
         deploy = load_deploy()
         path = self.app / "server.py"
@@ -255,7 +273,7 @@ class DeployProductionTest(unittest.TestCase):
         self.assertTrue((self.app / "production_students_safety.py").is_file())
         self.assertIn("restorePracticeScroll", (self.app / "static" / "app.js").read_text(encoding="utf-8"))
         self.assertIn("ege123-2", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
-        self.assertIn("siteurl1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("authlock1", (self.app / "static" / "index.html").read_text(encoding="utf-8"))
         self.assertTrue((self.app / "static" / "practice-page.js").exists())
         self.assertTrue((self.app / "static" / "find-date.js").exists())
         self.assertEqual((self.app / "data" / "students.json").read_text(encoding="utf-8"), '{"students":[]}\n')

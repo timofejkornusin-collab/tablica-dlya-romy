@@ -52,6 +52,7 @@ class SafetyLivePostTest(unittest.TestCase):
         self._real_save = server.save_data
         self._real_session = server.Handler._session_payload
         self._real_tunnel = server.start_tunnel
+        self._real_user = server.Handler._user
 
         self.patches = [
             patch.object(server, "DATA_DIR", data_dir),
@@ -89,6 +90,7 @@ class SafetyLivePostTest(unittest.TestCase):
         server.Handler._read_json = self._real_read
         server.Handler._session_payload = self._real_session
         server.start_tunnel = self._real_tunnel
+        server.Handler._user = self._real_user
         server.save_data = self._real_save
         for item in reversed(self.patches):
             item.stop()

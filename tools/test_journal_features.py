@@ -372,7 +372,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=siteurl1", html)
+        self.assertIn("app.js?v=authlock1", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):
@@ -1020,8 +1020,13 @@ class StudentShareUrlTest(unittest.TestCase):
         self.assertNotIn("lines.push(`Ссылка: ${state.publicUrl}`)", app_js)
         self.assertIn("pinggy", app_js)
         self.assertIn("const text = studentShareUrl();", app_js)
+        self.assertIn("function isTeacherAccount()", app_js)
+        self.assertIn('return Boolean(state.me && state.me.role === "teacher");', app_js)
+        self.assertNotIn("return !state.me || state.me.role !== \"student\";", app_js)
+        self.assertIn("function shouldShowLogin(", app_js)
+        self.assertIn("function isPublicJournalHost()", app_js)
         html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("app.js?v=siteurl1", html)
+        self.assertIn("app.js?v=authlock1", html)
 
 
 if __name__ == "__main__":

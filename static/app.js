@@ -386,8 +386,14 @@ function rowTheoryFiles(row) {
   return [{ id, name: String((row && row.theoryFileName) || id) }];
 }
 
+function isPublicJournalHost() {
+  return String((typeof location !== "undefined" && location.hostname) || "")
+    .replace(/^www\./i, "")
+    .toLowerCase() === "rusklasst.ru";
+}
+
 function isTeacherAccount() {
-  return !state.me || state.me.role !== "student";
+  return Boolean(state.me && state.me.role === "teacher");
 }
 
 function isStudentView() {
@@ -1245,6 +1251,16 @@ function renderList() {
   hideRowConfirm();
   hideFindDialog();
   document.body.classList.remove("practice-open");
+  if (!isTeacherUi()) {
+    const id = (state.me && state.me.studentId) || (state.students[0] && state.students[0].id);
+    if (id) {
+      state.currentId = id;
+      renderTable();
+      return;
+    }
+    showLoginScreen();
+    return;
+  }
   state.view = "list";
   state.currentId = null;
   state.previewAsStudent = false;
@@ -2786,6 +2802,13 @@ function startPolling() {
   }, 8000);
 }
 
+function shouldShowLogin(session) {
+  if (!session || !session.user) return true;
+  if (isPublicJournalHost() && session.localTeacher) return true;
+  const role = session.user.role;
+  return role !== "teacher" && role !== "student";
+}
+
 async function enterApp() {
   await loadStudents();
   await loadBanks();
@@ -2816,7 +2839,7 @@ async function start() {
   hideUnwantedLabels();
   try {
     const session = await loadSession();
-    if (!session.user) {
+    if (shouldShowLogin(session)) {
       showLoginScreen();
       return;
     }

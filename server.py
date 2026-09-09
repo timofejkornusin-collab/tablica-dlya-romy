@@ -123,6 +123,59 @@ def is_loopback(host: str) -> bool:
     return value.startswith("127.")
 
 
+PUBLIC_HOSTS = ("rusklasst.ru", "www.rusklasst.ru")
+
+
+def request_hostname(handler) -> str:
+    raw = (handler.headers.get("Host") or "").strip().lower()
+    if not raw:
+        return ""
+    if raw.startswith("["):
+        end = raw.find("]")
+        if end > 0:
+            return raw[1:end]
+    if raw.count(":") == 1:
+        return raw.rsplit(":", 1)[0]
+    return raw
+
+
+def is_proxied_request(handler) -> bool:
+    if handler.headers.get("X-Forwarded-For"):
+        return True
+    if handler.headers.get("X-Real-IP"):
+        return True
+    if handler.headers.get("X-Forwarded-Proto"):
+        return True
+    return request_hostname(handler) in PUBLIC_HOSTS
+
+
+def allow_local_teacher(handler) -> bool:
+    """Учитель без логина только в локальном приложении, не через nginx."""
+    if os.environ.get("JOURNAL_DISABLE_LOCAL_TEACHER") == "1":
+        return False
+    if os.environ.get("INVOCATION_ID"):
+        return False
+    if os.environ.get("JOURNAL_PUBLIC_URL", "").strip():
+        return False
+    if is_proxied_request(handler):
+        return False
+    host = request_hostname(handler)
+    if host in PUBLIC_HOSTS:
+        return False
+    if host and host not in ("127.0.0.1", "localhost", "::1"):
+        return False
+    return is_loopback(handler.client_address[0])
+
+
+def request_client_ip(handler) -> str:
+    peer = handler.client_address[0]
+    forwarded = (handler.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    real_ip = (handler.headers.get("X-Real-IP") or "").strip()
+    if is_proxied_request(handler) or (is_loopback(peer) and (forwarded or real_ip)):
+        return forwarded or real_ip or peer
+    return peer
+
+
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
     salt = salt or secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac(
@@ -782,9 +835,16 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
     def _cookie_header(self, token: str | None, max_age: int = 60 * 60 * 14) -> str:
+        secure = "; Secure" if self._cookie_secure() else ""
         if not token:
-            return f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
-        return f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}"
+            return f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax{secure}; Max-Age=0"
+        return f"{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax{secure}; Max-Age={max_age}"
+
+    def _cookie_secure(self) -> bool:
+        proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+        if proto == "https":
+            return True
+        return request_hostname(self) in PUBLIC_HOSTS
 
     def _token(self) -> str | None:
         raw = self.headers.get("Cookie", "")
@@ -800,7 +860,7 @@ class Handler(SimpleHTTPRequestHandler):
         session = get_session(self._token())
         if session:
             return session
-        if is_loopback(self.client_address[0]):
+        if allow_local_teacher(self):
             return {
                 "role": "teacher",
                 "login": "учитель",
@@ -961,7 +1021,7 @@ class Handler(SimpleHTTPRequestHandler):
         payload = self._read_json()
         if payload is None:
             return
-        ip = self.client_address[0]
+        ip = request_client_ip(self)
         if too_many_logins(ip):
             self._send_json({"ok": False, "error": "Слишком много попыток. Подождите несколько минут."}, 429)
             return
@@ -975,7 +1035,7 @@ class Handler(SimpleHTTPRequestHandler):
         if login.casefold() == auth["teacher_login"].casefold() and check_password(
             password, auth["teacher_salt"], auth["teacher_password_hash"]
         ):
-            if not is_loopback(ip) and auth.get("teacher_password_is_initial"):
+            if not allow_local_teacher(self) and auth.get("teacher_password_is_initial"):
                 mark_login_fail(ip)
                 self._send_json({"ok": False, "error": "Неверный логин или пароль"}, 401)
                 return

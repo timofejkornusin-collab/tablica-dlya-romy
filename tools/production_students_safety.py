@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 
+PUBLIC_HOSTS = ("rusklasst.ru", "www.rusklasst.ru")
 ERROR_LOG = Path("/tmp/journal-students-error.log")
 STUDENT_SITE_URL = "https://rusklasst.ru"
 _grade_job = contextvars.ContextVar("journal_grade_job", default=None)
@@ -80,6 +81,112 @@ def _send_json(handler, payload, status: int = 200) -> None:
         _write_error(exc)
 
 
+def _header(handler, name: str) -> str:
+    headers = getattr(handler, "headers", None)
+    if headers is None:
+        return ""
+    try:
+        getter = getattr(headers, "get", None)
+        if callable(getter):
+            return str(getter(name) or "").strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _request_hostname(handler) -> str:
+    raw = _header(handler, "Host").lower()
+    if not raw:
+        return ""
+    if raw.startswith("["):
+        end = raw.find("]")
+        if end > 0:
+            return raw[1:end]
+    if raw.count(":") == 1:
+        return raw.rsplit(":", 1)[0]
+    return raw
+
+
+def _is_proxied_request(handler) -> bool:
+    if _header(handler, "X-Forwarded-For"):
+        return True
+    if _header(handler, "X-Real-IP"):
+        return True
+    if _header(handler, "X-Forwarded-Proto"):
+        return True
+    return _request_hostname(handler) in PUBLIC_HOSTS
+
+
+def _peer_loopback(handler, g: dict) -> bool:
+    checker = g.get("is_loopback")
+    peer = handler.client_address[0] if getattr(handler, "client_address", None) else ""
+    if callable(checker):
+        try:
+            return bool(checker(peer))
+        except Exception:
+            pass
+    value = str(peer or "").strip().lower().strip("[]")
+    return value in ("127.0.0.1", "::1", "localhost") or value.startswith("127.")
+
+
+def allow_local_teacher(handler, g: dict | None = None) -> bool:
+    if os.environ.get("JOURNAL_DISABLE_LOCAL_TEACHER") == "1":
+        return False
+    if os.environ.get("INVOCATION_ID"):
+        return False
+    if os.environ.get("JOURNAL_PUBLIC_URL", "").strip():
+        return False
+    if _is_proxied_request(handler):
+        return False
+    host = _request_hostname(handler)
+    if host in PUBLIC_HOSTS:
+        return False
+    if host and host not in ("127.0.0.1", "localhost", "::1"):
+        return False
+    return _peer_loopback(handler, g or {})
+
+
+def _wrap_user(handler_cls, g: dict) -> None:
+    orig = getattr(handler_cls, "_user", None)
+    get_session = g.get("get_session")
+    if getattr(orig, "_journal_proxy_auth", False):
+        return
+
+    def _user(self):
+        token = None
+        if hasattr(self, "_token"):
+            try:
+                token = self._token()
+            except Exception:
+                token = None
+        if token and callable(get_session):
+            try:
+                session = get_session(token)
+            except Exception:
+                session = None
+            if session:
+                return session
+        user = orig(self) if callable(orig) else None
+        if user and user.get("role") == "student":
+            return user
+        if user and user.get("local") and not allow_local_teacher(self, g):
+            return None
+        if user:
+            return user
+        if allow_local_teacher(self, g):
+            return {
+                "role": "teacher",
+                "login": "учитель",
+                "name": "Учитель",
+                "student_id": None,
+                "local": True,
+            }
+        return None
+
+    _user._journal_proxy_auth = True
+    handler_cls._user = _user
+
+
 def student_site_url() -> str:
     configured = os.environ.get("JOURNAL_PUBLIC_URL", "").strip().rstrip("/")
     if configured:
@@ -97,15 +204,19 @@ def _tunnel_disabled() -> bool:
     return False
 
 
-def _wrap_session_payload(handler_cls) -> None:
+def _wrap_session_payload(handler_cls, g: dict | None = None) -> None:
     orig = getattr(handler_cls, "_session_payload", None)
     if not callable(orig) or getattr(orig, "_journal_student_site", False):
         return
 
     def _session_payload(self, user):
         payload = orig(self, user)
-        if isinstance(payload, dict):
-            payload["publicUrl"] = student_site_url()
+        if not isinstance(payload, dict):
+            return payload
+        payload["publicUrl"] = student_site_url()
+        if user and user.get("local") and not allow_local_teacher(self, g or {}):
+            payload["user"] = None
+            payload["localTeacher"] = False
         return payload
 
     _session_payload._journal_student_site = True
@@ -248,8 +359,15 @@ def _request_json(handler):
     return data if isinstance(data, dict) else {}
 
 
-def _require_user(handler):
+def _effective_user(handler, g: dict | None = None):
     user = handler._user() if hasattr(handler, "_user") else None
+    if user and user.get("local") and not allow_local_teacher(handler, g):
+        return None
+    return user
+
+
+def _require_user(handler):
+    user = _effective_user(handler)
     if not user:
         _send_json(handler, {"ok": False, "error": "Нужно войти"}, 401)
         return None
@@ -1092,15 +1210,25 @@ def install(g: dict) -> bool:
     _wrap_read_json(handler_cls)
     _wrap_save_data(g)
     _wrap_handler_send_json(handler_cls)
-    _wrap_session_payload(handler_cls)
+    _wrap_user(handler_cls, g)
+    _wrap_session_payload(handler_cls, g)
     _wrap_start_tunnel(g)
 
     def do_GET(self):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        if path == "/api/session":
+            try:
+                user = _effective_user(self, g)
+                if hasattr(self, "_session_payload"):
+                    _send_json(self, self._session_payload(user))
+                    return
+            except Exception as exc:
+                _write_error(exc)
+            return orig_get(self)
         if path != "/api/students":
             return orig_get(self)
         try:
-            user = self._user() if hasattr(self, "_user") else None
+            user = _effective_user(self, g)
             if not user:
                 _send_json(self, {"ok": False, "error": "Нужно войти"}, 401)
                 return
