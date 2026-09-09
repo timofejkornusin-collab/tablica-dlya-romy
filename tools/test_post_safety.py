@@ -53,6 +53,10 @@ class SafetyLivePostTest(unittest.TestCase):
         self._real_session = server.Handler._session_payload
         self._real_tunnel = server.start_tunnel
         self._real_user = server.Handler._user
+        self._real_cookie = server.Handler._cookie_header
+        self._real_new_session = server.new_session
+        self._real_get_session = server.get_session
+        self._real_drop_session = server.drop_session
 
         self.patches = [
             patch.object(server, "DATA_DIR", data_dir),
@@ -91,6 +95,10 @@ class SafetyLivePostTest(unittest.TestCase):
         server.Handler._session_payload = self._real_session
         server.start_tunnel = self._real_tunnel
         server.Handler._user = self._real_user
+        server.Handler._cookie_header = self._real_cookie
+        server.new_session = self._real_new_session
+        server.get_session = self._real_get_session
+        server.drop_session = self._real_drop_session
         server.save_data = self._real_save
         for item in reversed(self.patches):
             item.stop()

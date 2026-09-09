@@ -343,6 +343,10 @@ def patch_server(path: Path) -> None:
             '                "role": "teacher",',
         ),
         (
+            "max_age: int = 60 * 60 * 14",
+            "max_age: int = 60 * 60 * 24 * 30",
+        ),
+        (
             '"publicUrl": PUBLIC_URL,',
             '"publicUrl": "https://rusklasst.ru",',
         ),

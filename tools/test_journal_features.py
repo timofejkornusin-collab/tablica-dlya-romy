@@ -1029,5 +1029,34 @@ class StudentShareUrlTest(unittest.TestCase):
         self.assertIn("app.js?v=authlock1", html)
 
 
+class SessionPersistTest(unittest.TestCase):
+    def test_login_is_saved_and_survives_memory_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            previous = dict(server.SESSIONS)
+            server.SESSIONS.clear()
+            try:
+                with patch.object(server, "DATA_DIR", data_dir):
+                    token = server.new_session(
+                        {
+                            "role": "teacher",
+                            "login": "учитель",
+                            "name": "Учитель",
+                            "student_id": None,
+                        }
+                    )
+                    self.assertTrue((data_dir / "sessions.json").is_file())
+                    self.assertIn("2592000", str(server.SESSION_MAX_AGE))
+                    self.assertEqual(server.SESSION_MAX_AGE, 60 * 60 * 24 * 30)
+                    server.SESSIONS.clear()
+                    loaded = server.get_session(token)
+                    self.assertIsNotNone(loaded)
+                    self.assertEqual(loaded["role"], "teacher")
+                    self.assertEqual(loaded["login"], "учитель")
+            finally:
+                server.SESSIONS.clear()
+                server.SESSIONS.update(previous)
+
+
 if __name__ == "__main__":
     unittest.main()

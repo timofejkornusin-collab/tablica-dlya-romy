@@ -245,6 +245,20 @@ class DeployProductionTest(unittest.TestCase):
         self.assertIn("if False:", text)
         self.assertNotIn("if is_loopback(self.client_address[0]):", text)
 
+    def test_patch_server_extends_session_cookie(self) -> None:
+        deploy = load_deploy()
+        path = self.app / "server.py"
+        path.write_text(
+            "class H:\n"
+            "    def _cookie_header(self, token: str | None, max_age: int = 60 * 60 * 14) -> str:\n"
+            "        return 'x'\n",
+            encoding="utf-8",
+        )
+        deploy.patch_server(path)
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("max_age: int = 60 * 60 * 24 * 30", text)
+        self.assertNotIn("max_age: int = 60 * 60 * 14", text)
+
     def test_patch_server_always_installs_students_handler(self) -> None:
         deploy = load_deploy()
         path = self.app / "server.py"

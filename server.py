@@ -35,6 +35,7 @@ TOOLS_DIR = ROOT / "tools"
 DATA_FILE = DATA_DIR / "students.json"
 AUTH_FILE = DATA_DIR / "auth.json"
 UPLOADS_DIR = DATA_DIR / "uploads"
+SESSION_MAX_AGE = 60 * 60 * 24 * 30
 CLOUDFLARED = TOOLS_DIR / "cloudflared.exe"
 HOST = "0.0.0.0"
 START_PORT = 8765
@@ -439,10 +440,63 @@ def mark_login_fail(ip: str) -> None:
         LOGIN_HITS.setdefault(ip, []).append(time.time())
 
 
+def session_file() -> Path:
+    return DATA_DIR / "sessions.json"
+
+
+def _session_alive(payload: dict) -> bool:
+    if not isinstance(payload, dict) or payload.get("local"):
+        return False
+    created = payload.get("created")
+    try:
+        created_at = float(created or 0)
+    except (TypeError, ValueError):
+        created_at = 0.0
+    if created_at and (time.time() - created_at) > SESSION_MAX_AGE:
+        return False
+    return payload.get("role") in ("teacher", "student")
+
+
+def load_sessions() -> None:
+    path = session_file()
+    if not path.is_file():
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if not isinstance(raw, dict):
+        return
+    loaded = {
+        str(token): payload
+        for token, payload in raw.items()
+        if token and _session_alive(payload)
+    }
+    with SESSION_LOCK:
+        SESSIONS.update(loaded)
+
+
+def save_sessions() -> None:
+    path = session_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with SESSION_LOCK:
+        snapshot = {
+            token: payload
+            for token, payload in SESSIONS.items()
+            if _session_alive(payload)
+        }
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
 def new_session(payload: dict) -> str:
     token = secrets.token_urlsafe(24)
+    record = dict(payload)
+    record["created"] = time.time()
     with SESSION_LOCK:
-        SESSIONS[token] = payload
+        SESSIONS[token] = record
+    save_sessions()
     return token
 
 
@@ -450,7 +504,17 @@ def get_session(token: str | None) -> dict | None:
     if not token:
         return None
     with SESSION_LOCK:
-        return SESSIONS.get(token)
+        payload = SESSIONS.get(token)
+    if payload is None:
+        load_sessions()
+        with SESSION_LOCK:
+            payload = SESSIONS.get(token)
+    if payload is None:
+        return None
+    if not _session_alive(payload):
+        drop_session(token)
+        return None
+    return payload
 
 
 def drop_session(token: str | None) -> None:
@@ -458,6 +522,7 @@ def drop_session(token: str | None) -> None:
         return
     with SESSION_LOCK:
         SESSIONS.pop(token, None)
+    save_sessions()
 
 
 def lan_ip() -> str:
@@ -834,7 +899,7 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception:
             return
 
-    def _cookie_header(self, token: str | None, max_age: int = 60 * 60 * 14) -> str:
+    def _cookie_header(self, token: str | None, max_age: int = SESSION_MAX_AGE) -> str:
         secure = "; Secure" if self._cookie_secure() else ""
         if not token:
             return f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax{secure}; Max-Age=0"
@@ -1730,6 +1795,7 @@ def main() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     load_auth()
     migrate_students()
+    load_sessions()
 
     port = find_port()
     ensure_lan_firewall(port)

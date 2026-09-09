@@ -4,7 +4,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-data/tunnel.log
+data/sessions.json
 data/uploads/
 tools/*.exe
 tools/*.exe.download

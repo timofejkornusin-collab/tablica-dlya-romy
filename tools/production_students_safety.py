@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import secrets
 import traceback
 import uuid
@@ -23,6 +24,7 @@ from urllib.parse import unquote
 PUBLIC_HOSTS = ("rusklasst.ru", "www.rusklasst.ru")
 ERROR_LOG = Path("/tmp/journal-students-error.log")
 STUDENT_SITE_URL = "https://rusklasst.ru"
+SESSION_MAX_AGE = 60 * 60 * 24 * 30
 _grade_job = contextvars.ContextVar("journal_grade_job", default=None)
 UPLOAD_EXTENSIONS = {
     ".pdf",
@@ -148,7 +150,6 @@ def allow_local_teacher(handler, g: dict | None = None) -> bool:
 
 def _wrap_user(handler_cls, g: dict) -> None:
     orig = getattr(handler_cls, "_user", None)
-    get_session = g.get("get_session")
     if getattr(orig, "_journal_proxy_auth", False):
         return
 
@@ -159,9 +160,10 @@ def _wrap_user(handler_cls, g: dict) -> None:
                 token = self._token()
             except Exception:
                 token = None
-        if token and callable(get_session):
+        getter = g.get("get_session")
+        if token and callable(getter):
             try:
-                session = get_session(token)
+                session = getter(token)
             except Exception:
                 session = None
             if session:
@@ -221,6 +223,132 @@ def _wrap_session_payload(handler_cls, g: dict | None = None) -> None:
 
     _session_payload._journal_student_site = True
     handler_cls._session_payload = _session_payload
+
+
+def _session_path(g: dict) -> Path:
+    data_dir = g.get("DATA_DIR")
+    if isinstance(data_dir, Path):
+        return data_dir / "sessions.json"
+    data_file = g.get("DATA_FILE")
+    if isinstance(data_file, Path):
+        return data_file.parent / "sessions.json"
+    return Path("/var/www/journal/data/sessions.json")
+
+
+def _session_alive(payload) -> bool:
+    if not isinstance(payload, dict) or payload.get("local"):
+        return False
+    try:
+        created_at = float(payload.get("created") or 0)
+    except (TypeError, ValueError):
+        created_at = 0.0
+    if created_at and (time.time() - created_at) > SESSION_MAX_AGE:
+        return False
+    return payload.get("role") in ("teacher", "student")
+
+
+def _load_saved_sessions(g: dict) -> None:
+    sessions = g.get("SESSIONS")
+    if not isinstance(sessions, dict):
+        return
+    path = _session_path(g)
+    if not path.is_file():
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if not isinstance(raw, dict):
+        return
+    lock = g.get("SESSION_LOCK")
+    loaded = {str(token): payload for token, payload in raw.items() if token and _session_alive(payload)}
+    if lock is not None:
+        with lock:
+            sessions.update(loaded)
+    else:
+        sessions.update(loaded)
+
+
+def _save_saved_sessions(g: dict) -> None:
+    sessions = g.get("SESSIONS")
+    if not isinstance(sessions, dict):
+        return
+    path = _session_path(g)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = g.get("SESSION_LOCK")
+    if lock is not None:
+        with lock:
+            snapshot = {token: payload for token, payload in sessions.items() if _session_alive(payload)}
+    else:
+        snapshot = {token: payload for token, payload in sessions.items() if _session_alive(payload)}
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _wrap_sessions(g: dict) -> None:
+    orig_new = g.get("new_session")
+    orig_get = g.get("get_session")
+    orig_drop = g.get("drop_session")
+    if getattr(orig_new, "_journal_session_keep", False):
+        return
+    _load_saved_sessions(g)
+
+    def new_session(payload):
+        if callable(orig_new):
+            token = orig_new(payload)
+        else:
+            return ""
+        sessions = g.get("SESSIONS")
+        if isinstance(sessions, dict) and token in sessions and isinstance(sessions[token], dict):
+            sessions[token]["created"] = sessions[token].get("created") or time.time()
+        _save_saved_sessions(g)
+        return token
+
+    def get_session(token):
+        if callable(orig_get):
+            payload = orig_get(token)
+            if payload:
+                return payload
+        _load_saved_sessions(g)
+        if callable(orig_get):
+            return orig_get(token)
+        return None
+
+    def drop_session(token):
+        if callable(orig_drop):
+            orig_drop(token)
+        _save_saved_sessions(g)
+
+    new_session._journal_session_keep = True
+    if callable(orig_new):
+        g["new_session"] = new_session
+    if callable(orig_get):
+        g["get_session"] = get_session
+    if callable(orig_drop):
+        g["drop_session"] = drop_session
+
+
+def _wrap_cookie_header(handler_cls) -> None:
+    orig = getattr(handler_cls, "_cookie_header", None)
+    if not callable(orig) or getattr(orig, "_journal_session_keep", False):
+        return
+
+    def _cookie_header(self, token=None, max_age=SESSION_MAX_AGE):
+        try:
+            header = orig(self, token, max_age=SESSION_MAX_AGE)
+        except TypeError:
+            header = orig(self, token)
+        text = str(header or "")
+        if token:
+            if re.search(r"Max-Age=\d+", text):
+                text = re.sub(r"Max-Age=\d+", "Max-Age=%s" % SESSION_MAX_AGE, text)
+            else:
+                text = text.rstrip(";") + "; Max-Age=%s" % SESSION_MAX_AGE
+        return text
+
+    _cookie_header._journal_session_keep = True
+    handler_cls._cookie_header = _cookie_header
 
 
 def _wrap_start_tunnel(g: dict) -> None:
@@ -1210,6 +1338,8 @@ def install(g: dict) -> bool:
     _wrap_read_json(handler_cls)
     _wrap_save_data(g)
     _wrap_handler_send_json(handler_cls)
+    _wrap_sessions(g)
+    _wrap_cookie_header(handler_cls)
     _wrap_user(handler_cls, g)
     _wrap_session_payload(handler_cls, g)
     _wrap_start_tunnel(g)
