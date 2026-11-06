@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+
+data/auth.json
+data/sessions.json
+data/uploads/
+!data/uploads/.gitkeep
+tools/*.exe
+tools/*.exe.download
+*.download
