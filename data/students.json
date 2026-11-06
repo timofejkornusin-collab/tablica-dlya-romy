@@ -873,14 +873,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
-          "bankId": "",
-          "importedSource": "",
+          "lessonStatus": "",
+          "bankId": "pdf-ege2",
+          "importedSource": "manual:pdf-ege2",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "12.09.2026, 12:00",
@@ -890,14 +893,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
-          "bankId": "",
-          "importedSource": "",
+          "lessonStatus": "",
+          "bankId": "pdf-ege1",
+          "importedSource": "manual:pdf-ege1",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "19.09.2026, 12:00",
@@ -907,14 +913,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
-          "bankId": "",
-          "importedSource": "",
+          "lessonStatus": "",
+          "bankId": "pdf-ege3",
+          "importedSource": "manual:pdf-ege3",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "26.09.2026, 12:00",
@@ -924,14 +933,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
-          "bankId": "",
-          "importedSource": "",
+          "lessonStatus": "",
+          "bankId": "pdf-561e760502e4",
+          "importedSource": "manual:pdf-561e760502e4",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "03.10.2026, 12:00",
@@ -941,14 +953,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
-          "bankId": "",
-          "importedSource": "",
+          "lessonStatus": "",
+          "bankId": "pdf-5c5339baf8bb",
+          "importedSource": "manual:pdf-5c5339baf8bb",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "10.10.2026, 12:00",
@@ -958,14 +973,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "17.10.2026, 12:00",
@@ -975,14 +993,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "24.10.2026, 12:00",
@@ -992,14 +1013,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "31.10.2026, 12:00",
@@ -1009,14 +1033,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "07.11.2026, 12:00",
@@ -1026,14 +1053,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "14.11.2026, 12:00",
@@ -1043,14 +1073,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "21.11.2026, 12:00",
@@ -1060,14 +1093,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "28.11.2026, 12:00",
@@ -1077,14 +1113,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "05.12.2026, 12:00",
@@ -1094,14 +1133,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "12.12.2026, 12:00",
@@ -1111,14 +1153,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "19.12.2026, 12:00",
@@ -1128,14 +1173,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "26.12.2026, 12:00",
@@ -1145,14 +1193,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "02.01.2027, 12:00",
@@ -1162,14 +1213,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "09.01.2027, 12:00",
@@ -1179,14 +1233,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "16.01.2027, 12:00",
@@ -1196,14 +1253,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "23.01.2027, 12:00",
@@ -1213,14 +1273,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "30.01.2027, 12:00",
@@ -1230,14 +1293,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "06.02.2027, 12:00",
@@ -1247,14 +1313,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "13.02.2027, 12:00",
@@ -1264,14 +1333,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "20.02.2027, 12:00",
@@ -1281,14 +1353,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "27.02.2027, 12:00",
@@ -1298,14 +1373,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "06.03.2027, 12:00",
@@ -1315,14 +1393,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "13.03.2027, 12:00",
@@ -1332,14 +1413,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "20.03.2027, 12:00",
@@ -1349,14 +1433,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "27.03.2027, 12:00",
@@ -1366,14 +1453,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "03.04.2027, 12:00",
@@ -1383,14 +1473,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "10.04.2027, 12:00",
@@ -1400,14 +1493,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "17.04.2027, 12:00",
@@ -1417,14 +1513,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "24.04.2027, 12:00",
@@ -1434,14 +1533,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "01.05.2027, 12:00",
@@ -1451,14 +1553,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "08.05.2027, 12:00",
@@ -1468,14 +1573,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "15.05.2027, 12:00",
@@ -1485,14 +1593,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "22.05.2027, 12:00",
@@ -1502,14 +1613,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         },
         {
           "date": "29.05.2027, 12:00",
@@ -1519,14 +1633,17 @@
           "progress": "",
           "homework": "",
           "comment": "",
+          "lessonStatus": "",
           "bankId": "",
           "importedSource": "",
+          "extraLesson": false,
           "theoryFileId": "",
           "theoryFileName": "",
           "homeworkFileId": "",
           "homeworkFileName": "",
           "practiceFileId": "",
-          "practiceFileName": ""
+          "practiceFileName": "",
+          "theoryFiles": []
         }
       ],
       "progress": {},
