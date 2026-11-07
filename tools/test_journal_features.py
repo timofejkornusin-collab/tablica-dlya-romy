@@ -372,7 +372,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=authlock1", html)
+        self.assertIn("app.js?v=sharelink1", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):
@@ -1010,11 +1010,13 @@ class StudentShareUrlTest(unittest.TestCase):
         with patch.dict(os.environ, {"JOURNAL_DISABLE_TUNNEL": "1"}):
             self.assertFalse(server.should_start_tunnel())
 
-    def test_access_message_always_gives_rusklasst(self) -> None:
+    def test_access_message_uses_current_site(self) -> None:
         app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
         self.assertIn("function studentShareUrl()", app_js)
         self.assertIn("function isEphemeralShareUrl(", app_js)
-        self.assertIn("https://rusklasst.ru", app_js)
+        self.assertIn('if (host === "urokklass.ru") return "https://urokklass.ru";', app_js)
+        self.assertIn('return "https://urokklass.ru";', app_js)
+        self.assertNotIn('return "https://rusklasst.ru";\n}', app_js)
         self.assertIn("const site = studentShareUrl();", app_js)
         self.assertIn("`Ссылка: ${site}`", app_js)
         self.assertNotIn("lines.push(`Ссылка: ${state.publicUrl}`)", app_js)
@@ -1026,7 +1028,7 @@ class StudentShareUrlTest(unittest.TestCase):
         self.assertIn("function shouldShowLogin(", app_js)
         self.assertIn("function isPublicJournalHost()", app_js)
         html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("app.js?v=authlock1", html)
+        self.assertIn("app.js?v=sharelink1", html)
 
 
 class SessionPersistTest(unittest.TestCase):

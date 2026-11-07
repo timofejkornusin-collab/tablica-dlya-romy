@@ -134,7 +134,7 @@ text = path.read_text(encoding="utf-8")
 replacements = {
     r'styles\.css(?:\?v=[^"]*)?': 'styles.css?v=ege123-2',
     r'mobile\.css(?:\?v=[^"]*)?': 'mobile.css?v=ege123-2',
-    r'app\.js(?:\?v=[^"]*)?': 'app.js?v=authlock1',
+    r'app\.js(?:\?v=[^"]*)?': 'app.js?v=sharelink1',
     r'find-date\.js(?:\?v=[^"]*)?': 'find-date.js?v=class-bar1',
     r'practice-page\.js(?:\?v=[^"]*)?': 'practice-page.js?v=2',
     r'practice-scales\.css(?:\?v=[^"]*)?': 'practice-scales.css?v=2',
@@ -189,7 +189,7 @@ restart_on_8765
 
 local_code="$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ || true)"
 app_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/app.js | grep -c 'restorePracticeScroll' || true)"
-index_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/ | grep -c 'authlock1' || true)"
+index_marker="$(curl -s --max-time 8 http://127.0.0.1:8765/ | grep -c 'sharelink1' || true)"
 api_code="$(curl -s --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/api/students || true)"
 
 echo "Проверка: site=$local_code app=$app_marker index=$index_marker api=$api_code"
