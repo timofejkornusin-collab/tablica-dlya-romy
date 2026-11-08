@@ -61,7 +61,7 @@ TASK_VERBS = (
     "рочитай",
 )
 TASK_START = re.compile(
-    r"(?:^|(?<=[\s.]))(?:№\s*)?(\d{1,3})(?:\.\s*|\s+)(?=(?:%s))"
+    r"(?:^|(?<=[\s.]))(?:№\s*)?(\d{1,3})(?:[.,]\s*|\s+)(?=(?:%s))"
     % "|".join(sorted((re.escape(verb) for verb in TASK_VERBS), key=len, reverse=True)),
     re.M,
 )
@@ -152,8 +152,20 @@ def extract_pdf_text(data: bytes) -> str:
     text = _extract_pymupdf(data) or _extract_pypdf(data)
     text = _clean_extracted(text)
     if len(text.strip()) < 40:
+        if not _pdf_reader_ready():
+            raise ValueError("На сервере не установлена программа чтения PDF.")
         raise ValueError("В PDF почти нет текста. Скан-картинку программа пока не читает.")
     return text
+
+
+def _pdf_reader_ready() -> bool:
+    for module_name in ("pymupdf", "fitz", "pypdf"):
+        try:
+            __import__(module_name)
+        except ImportError:
+            continue
+        return True
+    return False
 
 
 def import_pdf_bytes(data: bytes, source_name: str, bank_id: str) -> dict:
@@ -286,11 +298,21 @@ def _squash(text: str) -> str:
     return " ".join((text or "").split())
 
 
+def _is_paronym_body(body: str) -> bool:
+    text = (body or "").lower()
+    return "пароним" in text or "неверно употреблено" in text
+
+
 def _make_task(number: int, body: str) -> dict | None:
     answer = _take_inline_answer(body)
+    paronym = _is_paronym_body(body)
     options, extra_passage = _options_and_passage(body)
     kind = ""
-    if not options and "самостоятельно подберите" not in (body or "").lower():
+    if (
+        not options
+        and not paronym
+        and "самостоятельно подберите" not in (body or "").lower()
+    ):
         phrases = _phrase_options(body)
         if phrases:
             options = phrases
@@ -298,7 +320,9 @@ def _make_task(number: int, body: str) -> dict | None:
     prompt = _task_prompt(body, options)
     if not prompt and not any(options) and not extra_passage:
         return None
-    if not kind and _looks_word_prompt(prompt) and not any(options):
+    if paronym and not any(options):
+        kind = "word"
+    elif not kind and _looks_word_prompt(prompt) and not any(options):
         kind = "word"
     task = {"n": number, "prompt": prompt, "options": options, "answer": answer}
     if kind:
