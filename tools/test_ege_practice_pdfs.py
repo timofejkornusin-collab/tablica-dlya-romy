@@ -791,5 +791,49 @@ class SeedTask123PdfTest(unittest.TestCase):
                 self.assertNotIn("________", first["prompt"])
 
 
+class PracticePdfReadingTest(unittest.TestCase):
+    def test_paronym_task_keeps_its_own_instruction(self) -> None:
+        text = (
+            "1. В одном из приведённых ниже предложений НЕВЕРНО употреблено выделенное слово.\n"
+            "Исправьте лексическую ошибку, подобрав к выделенному слову пароним. Запишите\n"
+            "подобранное слово. Ответ __________\n"
+            "Согласно закону, шум в БУДНИЕ дни запрещён.\n"
+            "БЕЗОТВЕТНОЕ отношение вредит питомцу.\n"
+            "\n"
+            "2. В одном из приведённых ниже предложений НЕВЕРНО употреблено выделенное слово.\n"
+            "Исправьте лексическую ошибку, подобрав к выделенному слову пароним. Запишите\n"
+            "подобранное слово. Ответ __________\n"
+            "Он растерялся и ЗАНИЗИЛ цену.\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        self.assertEqual([task["n"] for task in tasks], [1, 2])
+        self.assertEqual(tasks[0].get("kind"), "word")
+        self.assertIn("пароним", tasks[0]["prompt"])
+        self.assertIn("БУДНИЕ", tasks[0]["prompt"])
+        self.assertNotIn("одной и той же буквы", tasks[0]["prompt"])
+        self.assertFalse(any(tasks[0]["options"]))
+
+    def test_comma_after_number_starts_the_next_task(self) -> None:
+        text = (
+            "39. Укажите варианты ответов, в которых верно выделена буква, обозначающая ударный гласный звук. Ответ __________\n"
+            "1. бородУ\n"
+            "2. прозорлИвый\n"
+            "3. брАла\n"
+            "4. повторИт\n"
+            "5. донЕльзя\n"
+            "40, Укажите варианты ответов, в которых верно выделена буква, обозначающая ударный гласный звук. Ответ __________\n"
+            "1. газопровОд\n"
+            "2. накренИтся\n"
+            "3. цепОчка\n"
+            "4. полОжил\n"
+            "5. начАтый\n"
+        )
+        tasks = pdf_import.parse_tasks(text)
+        self.assertEqual([task["n"] for task in tasks], [39, 40])
+        self.assertEqual(tasks[0]["options"][4], "донЕльзя")
+        self.assertEqual(tasks[1]["options"][0], "газопровОд")
+        self.assertNotIn("40", " ".join(tasks[0]["options"]))
+
+
 if __name__ == "__main__":
     unittest.main()
