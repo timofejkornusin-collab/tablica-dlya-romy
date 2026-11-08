@@ -236,8 +236,30 @@ def load_auth() -> dict:
     return auth
 
 
+def schedule_github_backup() -> None:
+    """Отправляет журнал на GitHub в фоне. Ошибке сети нельзя мешать сохранению урока."""
+    if os.environ.get("JOURNAL_SKIP_GITHUB_BACKUP") == "1":
+        return
+    script = Path("/usr/local/bin/urokklass-github-backup")
+    mirror = Path("/var/backups/urokklass-mirror/.git")
+    if not script.is_file() or not mirror.exists():
+        return
+    try:
+        subprocess.Popen(
+            [str(script)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except OSError:
+        return
+
+
 def save_auth(auth: dict) -> None:
     atomic_write(AUTH_FILE, auth)
+    schedule_github_backup()
 
 
 def load_data() -> dict:
@@ -253,6 +275,7 @@ def load_data() -> dict:
 
 def save_data(data: dict) -> None:
     atomic_write(DATA_FILE, {"students": data.get("students", [])})
+    schedule_github_backup()
 
 
 def migrate_students() -> list[str]:

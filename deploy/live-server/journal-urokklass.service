@@ -1,0 +1,16 @@
+[Unit]
+Description=Urokklass journal
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/urokklass
+Environment=JOURNAL_DISABLE_TUNNEL=1
+Environment=JOURNAL_PUBLIC_URL=https://urokklass.ru
+ExecStart=/var/www/urokklass/.venv/bin/python -u server.py
+Restart=on-failure
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+#!/bin/bash
+# Сохраняет живой журнал на GitHub. Ставится на сервер в /usr/local/bin.
+set -eu
+export JOURNAL_ROOT="${JOURNAL_ROOT:-/var/www/urokklass}"
+export BACKUP_REPO="${BACKUP_REPO:-/var/backups/urokklass-mirror}"
+export BACKUP_BRANCH="${BACKUP_BRANCH:-cursor/live-journal-backup-ea20}"
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -i /root/.ssh/urokklass-github -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new}"
+exec python3 "$BACKUP_REPO/tools/github-backup.py"

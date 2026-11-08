@@ -1,0 +1,8 @@
+[Unit]
+Description=Save the urokklass journal to GitHub
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/urokklass-github-backup
+Nice=10
