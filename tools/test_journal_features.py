@@ -349,7 +349,7 @@ class BackToListButtonTest(unittest.TestCase):
         self.assertIn('id="back-btn"', html)
         self.assertIn("← К списку", html)
         self.assertIn("#back-btn {\n  white-space: nowrap;\n  flex: 0 0 auto;\n}", styles)
-        self.assertIn("ege123-2", html)
+        self.assertIn("load2", html)
 
 
 class TableHeaderLayoutTest(unittest.TestCase):
@@ -372,7 +372,7 @@ class LogoutOnListOnlyTest(unittest.TestCase):
         self.assertIn("const realStudent = !isTeacherAccount();", app_js)
         self.assertIn("updateLogoutButton();", app_js)
         self.assertNotIn("if (els.logoutBtn) els.logoutBtn.classList.remove(\"hidden\");", app_js)
-        self.assertIn("app.js?v=sharelink1", html)
+        self.assertIn("app.js?v=load2", html)
 
 
 class CardActionsTrimTest(unittest.TestCase):
@@ -1028,7 +1028,7 @@ class StudentShareUrlTest(unittest.TestCase):
         self.assertIn("function shouldShowLogin(", app_js)
         self.assertIn("function isPublicJournalHost()", app_js)
         html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("app.js?v=sharelink1", html)
+        self.assertIn("app.js?v=load2", html)
 
 
 class SessionPersistTest(unittest.TestCase):
