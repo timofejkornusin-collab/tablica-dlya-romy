@@ -5,7 +5,8 @@ __pycache__/
 Thumbs.db
 
 data/sessions.json
-data/uploads/
+data/known_hosts
+data/*.tmp
 tools/*.exe
 tools/*.exe.download
 *.download

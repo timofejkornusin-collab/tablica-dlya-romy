@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch the urokklass journal and save it to GitHub
+
+[Path]
+PathChanged=/var/www/urokklass/data/students.json
+PathChanged=/var/www/urokklass/data/auth.json
+PathChanged=/var/www/urokklass/data/banks
+PathChanged=/var/www/urokklass/data/uploads
+TriggerLimitIntervalSec=10s
+TriggerLimitBurst=30
+
+[Install]
+WantedBy=multi-user.target
