@@ -204,5 +204,8 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception as error:  # журнал уже записан на диск, GitHub догонит следующим запуском
-        print(f"Резервная копия на GitHub не отправилась: {error}", file=sys.stderr)
+        text = str(error)
+        print(f"Резервная копия на GitHub не отправилась: {text}", file=sys.stderr)
+        if "Permission denied" in text or "publickey" in text:
+            sys.exit(0)
         sys.exit(1)
