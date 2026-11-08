@@ -757,17 +757,18 @@ function studentShareUrl() {
   const host = String((typeof location !== "undefined" && location.hostname) || "")
     .replace(/^www\./i, "")
     .toLowerCase();
+  if (host === "urokklass.ru") return "https://urokklass.ru";
   if (host === "rusklasst.ru") return "https://rusklasst.ru";
   const fromApi = String(state.publicUrl || "").trim().replace(/\/+$/, "");
   if (fromApi && !isEphemeralShareUrl(fromApi)) {
     try {
       const apiHost = new URL(fromApi).hostname.replace(/^www\./i, "").toLowerCase();
-      if (apiHost === "rusklasst.ru") return "https://rusklasst.ru";
+      if (apiHost === "urokklass.ru" || apiHost === "rusklasst.ru") return `https://${apiHost}`;
     } catch (_error) {
       /* старая ссылка туннеля */
     }
   }
-  return "https://rusklasst.ru";
+  return "https://urokklass.ru";
 }
 
 function accessMessage(name, login, password) {
